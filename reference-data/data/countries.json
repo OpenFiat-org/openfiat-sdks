@@ -1,0 +1,7 @@
+[
+  { "code": "US", "name": "United States", "currencyCodes": ["USD"] },
+  { "code": "NG", "name": "Nigeria", "currencyCodes": ["NGN"] },
+  { "code": "AE", "name": "United Arab Emirates", "currencyCodes": ["AED"] },
+  { "code": "GB", "name": "United Kingdom", "currencyCodes": ["GBP"] },
+  { "code": "IN", "name": "India", "currencyCodes": ["INR"] }
+]

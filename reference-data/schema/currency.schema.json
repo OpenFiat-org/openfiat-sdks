@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Currency",
+  "type": "object",
+  "required": ["code", "name", "minorUnit"],
+  "properties": {
+    "code": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217" },
+    "name": { "type": "string" },
+    "minorUnit": { "type": "integer", "minimum": 0, "maximum": 8 }
+  }
+}

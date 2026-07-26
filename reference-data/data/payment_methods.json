@@ -1,0 +1,5 @@
+[
+  { "id": "bank-transfer", "name": "Bank Transfer" },
+  { "id": "mobile-money", "name": "Mobile Money" },
+  { "id": "card", "name": "Card Payment" }
+]

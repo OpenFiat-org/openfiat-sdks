@@ -1,0 +1,16 @@
+[package]
+name = "openfiat-sdk"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Official Rust SDK for the OpenFiat protocol."
+repository = "https://github.com/OpenFiat-org/openfiat-sdk-rust"
+readme = "README.md"
+
+[lib]
+name = "openfiat_sdk"
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]

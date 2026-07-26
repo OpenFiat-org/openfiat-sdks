@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Country",
+  "type": "object",
+  "required": ["code", "name"],
+  "properties": {
+    "code": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2" },
+    "name": { "type": "string" },
+    "currencyCodes": { "type": "array", "items": { "type": "string" } }
+  }
+}

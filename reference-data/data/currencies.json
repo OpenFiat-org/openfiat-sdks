@@ -1,0 +1,7 @@
+[
+  { "code": "USD", "name": "United States Dollar", "minorUnit": 2 },
+  { "code": "NGN", "name": "Nigerian Naira", "minorUnit": 2 },
+  { "code": "AED", "name": "UAE Dirham", "minorUnit": 2 },
+  { "code": "GBP", "name": "Pound Sterling", "minorUnit": 2 },
+  { "code": "INR", "name": "Indian Rupee", "minorUnit": 2 }
+]

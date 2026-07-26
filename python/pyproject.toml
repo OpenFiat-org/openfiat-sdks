@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openfiat-sdk"
+version = "0.1.0"
+description = "Official Python SDK for the OpenFiat protocol."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+authors = [{ name = "OpenFiat-org" }]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/OpenFiat-org/openfiat-sdk-python"
+
+[project.optional-dependencies]
+dev = ["ruff>=0.7.0", "pytest>=8.3.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/openfiat_sdk"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
