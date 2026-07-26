@@ -39,7 +39,7 @@ jobs:
           # to read a "packageManager" field from (working-directory defaults
           # only apply to `run:` steps, not `uses:` actions), so pin explicitly.
           version: 9
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - run: pnpm install --no-frozen-lockfile
