@@ -34,6 +34,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          # No root-level package.json in this monorepo for pnpm/action-setup
+          # to read a "packageManager" field from (working-directory defaults
+          # only apply to `run:` steps, not `uses:` actions), so pin explicitly.
+          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
