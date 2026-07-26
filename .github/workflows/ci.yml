@@ -33,7 +33,7 @@ jobs:
         working-directory: typescript
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           # No root-level package.json in this monorepo for pnpm/action-setup
           # to read a "packageManager" field from (working-directory defaults
