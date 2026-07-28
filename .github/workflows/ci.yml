@@ -48,6 +48,46 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  typescript-sdk-live-node:
+    name: typescript/ (live node integration)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: OpenFiat-org/openfiat-core
+          path: openfiat-core
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "openfiat-core -> target"
+      # No wallet.json is provisioned here — openfiat-cli falls back to a
+      # freshly generated identity when one isn't found, which is fine
+      # for a throwaway CI node.
+      - name: Start a real openfiat-node in the background
+        working-directory: openfiat-core
+        run: |
+          CLI_DATA_DIR=${{ runner.temp }}/openfiat-node-data CLI_HTTP_ADDR=127.0.0.1:8080 \
+            cargo run -p openfiat-cli &
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8080/health && exit 0
+            sleep 2
+          done
+          echo "openfiat-node never became healthy" >&2
+          exit 1
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - working-directory: typescript
+        run: pnpm install --no-frozen-lockfile
+      - working-directory: typescript
+        run: pnpm test
+        env:
+          OPENFIAT_NODE_URL: http://127.0.0.1:8080
+
   python-sdk:
     name: python/ (ruff/pytest)
     runs-on: ubuntu-latest
