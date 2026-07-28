@@ -31,10 +31,10 @@ entry point, so it doesn't pull `node:fs` into a browser bundle:
 import { loadWalletFile, saveWalletFile } from "@openfiat/sdk/node";
 ```
 
-Typed methods currently cover `node`, `oracles`, and `providers` (the
-Service Registry oracle/notification/risk/snapshot providers register
-with) — see [`src/types.ts`](src/types.ts)'s own comment for how to
-extend this to another domain: read that domain's `events.rs`/
+Typed methods currently cover `node`, `chain`, `oracles`, and `providers`
+(the Service Registry oracle/notification/risk/snapshot providers
+register with) — see [`src/types.ts`](src/types.ts)'s own comment for
+how to extend this to another domain: read that domain's `events.rs`/
 `record.rs` in `openfiat-core` and transcribe the same (snake_case)
 field list, since these interfaces describe the exact JSON `serde`
 produces, not idiomatic TypeScript naming.
@@ -43,6 +43,28 @@ See [`examples/oracle_provider.ts`](examples/oracle_provider.ts) for a
 complete, runnable example: registering as an Oracle Provider and
 publishing a signed rate, verified end to end against a real
 `openfiat-core` node.
+
+## Chain bridge (OFS-4300)
+
+`chain.getChainStatus`, `chain.getLatestBlockhash`, and
+`chain.sendTransaction` reach a node's bridge to the Solana execution
+layer — identical behavior whether the node itself has a live Solana
+RPC connection or only gossip. This SDK never constructs or signs a
+Solana transaction on your behalf: build and sign one with
+`@solana/web3.js` (a dev dependency of this package, used only by its
+own example — not bundled into the published SDK), then submit its
+serialized bytes:
+
+```ts
+import { chain } from "@openfiat/sdk";
+
+const { blockhash } = await chain.getLatestBlockhash(client);
+// ...build and sign a @solana/web3.js Transaction with `blockhash`...
+await chain.sendTransaction(client, transaction.serialize());
+```
+
+See [`examples/solana_transaction.ts`](examples/solana_transaction.ts)
+for a complete, runnable example.
 
 ## Errors
 

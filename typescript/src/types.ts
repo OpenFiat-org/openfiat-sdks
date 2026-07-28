@@ -42,6 +42,20 @@ export interface VersionResult {
   version: string;
 }
 
+// --- Chain bridge (OFS-4300) ---
+
+export interface ChainStatus {
+  mode: "RpcConnected" | "GossipOnly";
+  blockhash: string | null;
+  slot: number | null;
+  age_ms: number | null;
+}
+
+export interface LatestBlockhash {
+  blockhash: string;
+  slot: number;
+}
+
 // --- Oracles (OFS-7000) ---
 
 export type OracleData =

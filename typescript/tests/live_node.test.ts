@@ -6,9 +6,11 @@
  * runs of `pnpm test` don't have a node handy; the dedicated CI job that
  * does start one sets this variable (see `.github/workflows/ci.yml`).
  */
+import { Keypair, SystemProgram, Transaction } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 import {
   Client,
+  chain,
   generateKeypair,
   node,
   oracles,
@@ -73,5 +75,30 @@ describe.skipIf(!endpoint)("against a real node", () => {
       name: "JsonRpcError",
       code: -32601,
     });
+  });
+
+  it("reports GossipOnly with no blockhash on a fresh node", async () => {
+    const status = await chain.getChainStatus(client);
+    expect(status.mode).toBe("GossipOnly");
+    expect(status.blockhash).toBeNull();
+  });
+
+  it("builds, signs, and submits a real Solana transaction", async () => {
+    const payer = Keypair.generate();
+    const recipient = Keypair.generate().publicKey;
+    // The node has no blockhash to hand out yet (same reason as the
+    // status check above) — a syntactically valid stand-in is enough to
+    // prove the sign-and-submit round trip, same as the standalone
+    // example's own fallback.
+    const blockhash = Keypair.generate().publicKey.toBase58();
+
+    const transaction = new Transaction({
+      feePayer: payer.publicKey,
+      blockhash,
+      lastValidBlockHeight: 0,
+    }).add(SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: recipient, lamports: 1_000 }));
+    transaction.sign(payer);
+
+    await expect(chain.sendTransaction(client, new Uint8Array(transaction.serialize()))).resolves.toBeUndefined();
   });
 });
