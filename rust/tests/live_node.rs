@@ -86,3 +86,46 @@ async fn an_unknown_method_surfaces_as_a_json_rpc_error() {
         Err(openfiat_sdk::Error::JsonRpc(-32601, _))
     ));
 }
+
+#[tokio::test]
+async fn a_fresh_node_reports_gossip_only_with_no_blockhash() {
+    let endpoint = spawn_node().await;
+    let client = Client::new(ClientConfig {
+        endpoint,
+        timeout_ms: 5_000,
+    });
+
+    let status = client.get_chain_status().await.unwrap();
+    assert_eq!(status.mode, "GossipOnly");
+    assert!(status.blockhash.is_none());
+
+    let err = client.get_latest_blockhash().await.unwrap_err();
+    assert!(matches!(err, openfiat_sdk::Error::Application { .. }));
+}
+
+#[tokio::test]
+async fn a_real_signed_solana_transaction_is_submitted_through_send_transaction() {
+    use solana_keypair::Keypair as SolanaKeypair;
+    use solana_message::Message;
+    use solana_pubkey::Pubkey;
+    use solana_signer::Signer;
+    use solana_transaction::Transaction;
+    use solana_transaction::versioned::VersionedTransaction;
+
+    let endpoint = spawn_node().await;
+    let client = Client::new(ClientConfig {
+        endpoint,
+        timeout_ms: 5_000,
+    });
+
+    let payer = SolanaKeypair::new();
+    let recipient = Pubkey::new_unique();
+    let blockhash = solana_hash::Hash::new_unique();
+    let instruction =
+        solana_system_interface::instruction::transfer(&payer.pubkey(), &recipient, 1_000);
+    let message = Message::new_with_blockhash(&[instruction], Some(&payer.pubkey()), &blockhash);
+    let transaction = Transaction::new(&[&payer], message, blockhash);
+    let versioned: VersionedTransaction = transaction.into();
+
+    client.send_transaction(&versioned).await.unwrap();
+}

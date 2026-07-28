@@ -4,6 +4,7 @@
 //! allows an inherent impl to be split across files in the same crate.
 
 pub mod advertisements;
+pub mod chain;
 pub mod disputes;
 pub mod governance;
 pub mod identity;

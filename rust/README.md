@@ -27,6 +27,25 @@ See [`examples/oracle_provider.rs`](examples/oracle_provider.rs) for a
 complete, runnable example: registering as an Oracle Provider and
 publishing a signed rate.
 
+## Chain bridge (OFS-4300)
+
+`get_chain_status`, `get_latest_blockhash`, and `send_transaction` reach
+a node's bridge to the Solana execution layer — identical behavior
+whether the node itself has a live Solana RPC connection or only gossip.
+This SDK never constructs or signs a Solana transaction on your
+behalf: build and sign one with `solana-transaction`/`solana-keypair`
+(re-exported transitively; see this crate's own `Cargo.toml` for the
+exact versions verified to compile together), then submit it:
+
+```rust
+let blockhash = client.get_latest_blockhash().await?.blockhash.parse()?;
+// ...build and sign a `solana_transaction::versioned::VersionedTransaction`...
+client.send_transaction(&versioned).await?;
+```
+
+See [`examples/solana_transaction.rs`](examples/solana_transaction.rs)
+for a complete, runnable example.
+
 ## Errors
 
 Every `Result<T, openfiat_sdk::Error>` distinguishes transport failure
