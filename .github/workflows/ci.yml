@@ -64,6 +64,9 @@ jobs:
       # No wallet.json is provisioned here — openfiat-cli falls back to a
       # freshly generated identity when one isn't found, which is fine
       # for a throwaway CI node.
+      - name: Build openfiat-cli
+        working-directory: openfiat-core
+        run: cargo build -p openfiat-cli
       - name: Start a real openfiat-node in the background
         working-directory: openfiat-core
         run: |
