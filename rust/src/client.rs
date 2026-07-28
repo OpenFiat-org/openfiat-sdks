@@ -105,16 +105,19 @@ impl Client {
         })
     }
 
-    /// Base64-wire-encode an already-signed domain event and submit it
-    /// as a `sendX` call — the primitive every `send_*` typed method in
-    /// `crate::methods` builds on (OFS-8200 §5's "opaque, already-signed
-    /// wire payload" write model).
+    /// Base64-encode an already-signed domain event as JSON and submit
+    /// it as a `sendX` call — the primitive every `send_*` typed method
+    /// in `crate::methods` builds on (OFS-8200 §5's "opaque, already-
+    /// signed JSON payload" write model — JSON, not the postcard format
+    /// OFS-1200's gossip envelope uses internally, so a signature this
+    /// SDK computes never needs to replicate Rust-specific binary
+    /// encoding rules).
     pub(crate) async fn send_signed<T: Serialize, R: DeserializeOwned>(
         &self,
         method: &'static str,
         signed: &T,
     ) -> Result<R> {
-        let bytes = openfiat_serialization::wire::to_bytes(signed)
+        let bytes = openfiat_serialization::json::to_bytes(signed)
             .expect("SDK-constructed signed payloads always serialize");
         self.call(
             method,
