@@ -23,7 +23,7 @@ async function main() {
   const client = new Client({ endpoint, timeoutMs: 30_000 });
 
   // In production, load a persistent identity instead — see
-  // loadWalletFile from ../src/wallet.js.
+  // loadWalletFile from "@openfiat/sdk/node" (../src/node.js here).
   const keypair = await generateKeypair();
   const peerId = peerIdFromPublicKey(keypair.publicKey);
 

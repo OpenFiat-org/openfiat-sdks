@@ -23,6 +23,14 @@ const keypair = await generateKeypair();
 // await oracles.sendOraclePublish(client, publish, keypair);
 ```
 
+The main entry is browser/edge-safe. A persistent Node.js identity
+(reading/writing a `wallet.json`) lives in the separate `@openfiat/sdk/node`
+entry point, so it doesn't pull `node:fs` into a browser bundle:
+
+```ts
+import { loadWalletFile, saveWalletFile } from "@openfiat/sdk/node";
+```
+
 Typed methods currently cover `node`, `oracles`, and `providers` (the
 Service Registry oracle/notification/risk/snapshot providers register
 with) — see [`src/types.ts`](src/types.ts)'s own comment for how to
