@@ -4,16 +4,31 @@
 //! shelling out to the `openfiat-node` binary, which isn't reachable
 //! as a git dependency the way the library crates are).
 
+use openfiat_advertisements::AdvertisementId;
+use openfiat_advertisements::events::AdvertisementCreate;
+use openfiat_advertisements::record::{Direction, PricingModel};
 use openfiat_governance::events::ProposalCreate;
 use openfiat_governance::record::ProposalCategory;
 use openfiat_network::identity::peer_id_from_public_key;
+use openfiat_notifications::events::{DeliveryReport, SubscriptionUpdate};
+use openfiat_notifications::{
+    DeliveryStatus, NotificationCategory, NotificationId, NotificationTrigger,
+};
+use openfiat_registry::Registration;
+use openfiat_reservations::ReservationId;
+use openfiat_reservations::events::ReservationRequest;
 use openfiat_sdk::wallet::Keypair;
 use openfiat_sdk::{Client, ClientConfig};
 use openfiat_sessions::SessionId;
 use openfiat_sessions::events::{SessionCreate, SessionRevoke};
 use openfiat_storage::mem::MemoryStore;
-use openfiat_types::Timestamp;
+use openfiat_types::{Amount, NotificationChannel, PeerId, ServiceId, ServiceType, Timestamp};
 use std::sync::Arc;
+
+fn peer_id(keypair: &Keypair) -> PeerId {
+    peer_id_from_public_key(&keypair.public_key())
+        .expect("a freshly generated keypair's public key always derives a peer id")
+}
 
 async fn spawn_node() -> String {
     let rpc_handle = openfiat_rpc::spawn_actor(MemoryStore::new);
@@ -180,4 +195,133 @@ async fn a_real_signed_solana_transaction_is_submitted_through_send_transaction(
     let versioned: VersionedTransaction = transaction.into();
 
     client.send_transaction(&versioned).await.unwrap();
+}
+
+/// The same flow `examples/trading_bot.rs` walks through — this is what
+/// keeps that quickstart's code from silently drifting out of date: a
+/// merchant publishes a Sell ad, a separate bot identity reserves against
+/// it, and the reservation is readable back in its post-request state.
+#[tokio::test]
+async fn a_trading_bots_reservation_locks_escrow_against_a_published_advertisement() {
+    let endpoint = spawn_node().await;
+    let client = Client::new(ClientConfig {
+        endpoint,
+        timeout_ms: 5_000,
+    });
+
+    let merchant = Keypair::generate();
+    let bot = Keypair::generate();
+
+    let create = AdvertisementCreate {
+        id: AdvertisementId::new("live-node-trading-bot-ad"),
+        merchant: peer_id(&merchant),
+        merchant_public_key: merchant.public_key(),
+        asset: "USDT".to_string(),
+        direction: Direction::Sell,
+        fiat_currency: "KES".to_string(),
+        min_trade: Amount::new(1_000, 2),
+        max_trade: Amount::new(50_000, 2),
+        initial_liquidity: Amount::new(200_000, 2),
+        pricing: PricingModel::Fixed {
+            price: Amount::new(12_950, 2),
+        },
+        payment_methods: vec!["M-Pesa".to_string()],
+        timestamp: Timestamp::now(),
+    };
+    let ad_id = client
+        .send_advertisement_create(create, &merchant)
+        .await
+        .unwrap();
+
+    let request = ReservationRequest {
+        id: ReservationId::new("live-node-trading-bot-reservation"),
+        advertisement_id: ad_id,
+        requester: peer_id(&bot),
+        requester_public_key: bot.public_key(),
+        amount: Amount::new(5_000, 2),
+        timestamp: Timestamp::now(),
+    };
+    let reservation_id = client
+        .send_reservation_request(request, &bot)
+        .await
+        .unwrap();
+
+    let reservation = client
+        .get_reservation(reservation_id.as_str())
+        .await
+        .unwrap()
+        .expect("just opened this reservation");
+    assert_eq!(reservation.requester, peer_id(&bot));
+}
+
+/// The same flow `examples/notification_provider.rs` walks through: a
+/// provider registers, a wallet subscribes, the provider reports a
+/// delivery, and that receipt is readable back for the wallet.
+#[tokio::test]
+async fn a_notification_providers_delivery_report_is_readable_back_for_the_wallet() {
+    let endpoint = spawn_node().await;
+    let client = Client::new(ClientConfig {
+        endpoint,
+        timeout_ms: 5_000,
+    });
+
+    let provider = Keypair::generate();
+    let wallet = Keypair::generate();
+    let service_id = ServiceId::new("live-node-notification-provider-1");
+
+    client
+        .send_provider_register(
+            Registration {
+                service_id: service_id.clone(),
+                service_type: ServiceType::Notifications(NotificationChannel::Webhook),
+                provider: peer_id(&provider),
+                provider_public_key: provider.public_key(),
+                endpoints: vec!["https://example.invalid/webhook".to_string()],
+                supported_ofs: vec![1500, 6000],
+                region: None,
+                capabilities: vec!["Webhook".to_string()],
+                pricing: None,
+                timestamp: Timestamp::now(),
+            },
+            &provider,
+        )
+        .await
+        .unwrap();
+
+    client
+        .send_subscription_update(
+            SubscriptionUpdate {
+                wallet: peer_id(&wallet),
+                wallet_public_key: wallet.public_key(),
+                enabled_categories: vec![NotificationCategory::Trading],
+                timestamp: Timestamp::now(),
+            },
+            &wallet,
+        )
+        .await
+        .unwrap();
+
+    client
+        .send_delivery_report(
+            DeliveryReport {
+                notification_id: NotificationId::new("live-node-notification-1"),
+                service_id,
+                provider: peer_id(&provider),
+                provider_public_key: provider.public_key(),
+                recipient_wallet: peer_id(&wallet),
+                trigger: NotificationTrigger::TradeCompleted,
+                status: DeliveryStatus::Delivered,
+                timestamp: Timestamp::now(),
+            },
+            &provider,
+        )
+        .await
+        .unwrap();
+
+    let receipts = client
+        .get_delivery_receipts_by_wallet(&peer_id(&wallet))
+        .await
+        .unwrap();
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].status, DeliveryStatus::Delivered);
 }

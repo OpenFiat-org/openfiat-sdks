@@ -10,15 +10,22 @@ import { Keypair, SystemProgram, Transaction } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 import {
   Client,
+  advertisements,
   chain,
   generateKeypair,
   node,
+  notifications,
   oracles,
   peerIdFromPublicKey,
   providers,
+  reservations,
   toBytes,
+  type AdvertisementCreate,
+  type DeliveryReport,
   type OraclePublish,
   type Registration,
+  type ReservationRequest,
+  type SubscriptionUpdate,
 } from "../src/index.js";
 
 const endpoint = process.env.OPENFIAT_NODE_URL;
@@ -100,5 +107,93 @@ describe.skipIf(!endpoint)("against a real node", () => {
     transaction.sign(payer);
 
     await expect(chain.sendTransaction(client, new Uint8Array(transaction.serialize()))).resolves.toBeUndefined();
+  });
+
+  // The same flow examples/trading_bot.ts walks through — this is what
+  // keeps that quickstart's code from silently drifting out of date.
+  it("locks escrow on a trading bot's reservation against a published advertisement", async () => {
+    const merchant = await generateKeypair();
+    const bot = await generateKeypair();
+
+    const create: AdvertisementCreate = {
+      id: "vitest-trading-bot-ad",
+      merchant: toBytes(peerIdFromPublicKey(merchant.publicKey)),
+      merchant_public_key: toBytes(merchant.publicKey),
+      asset: "USDT",
+      direction: "Sell",
+      fiat_currency: "KES",
+      min_trade: { base_units: 1_000, decimals: 2 },
+      max_trade: { base_units: 50_000, decimals: 2 },
+      initial_liquidity: { base_units: 200_000, decimals: 2 },
+      pricing: { Fixed: { price: { base_units: 12_950, decimals: 2 } } },
+      payment_methods: ["M-Pesa"],
+      timestamp: Date.now(),
+    };
+    const adId = await advertisements.sendAdvertisementCreate(client, create, merchant);
+    expect(adId).toBe("vitest-trading-bot-ad");
+
+    const request: ReservationRequest = {
+      id: "vitest-trading-bot-reservation",
+      advertisement_id: adId,
+      requester: toBytes(peerIdFromPublicKey(bot.publicKey)),
+      requester_public_key: toBytes(bot.publicKey),
+      amount: { base_units: 5_000, decimals: 2 },
+      timestamp: Date.now(),
+    };
+    const reservationId = await reservations.sendReservationRequest(client, request, bot);
+    expect(reservationId).toBe("vitest-trading-bot-reservation");
+
+    const reservation = await reservations.getReservation(client, reservationId);
+    expect(reservation?.state).toBe("EscrowLocked");
+  });
+
+  // The same flow examples/notification_provider.ts walks through.
+  it("reports a notification provider's delivery back for the subscribed wallet", async () => {
+    const provider = await generateKeypair();
+    const wallet = await generateKeypair();
+    const providerId = peerIdFromPublicKey(provider.publicKey);
+    const walletId = peerIdFromPublicKey(wallet.publicKey);
+    const serviceId = "vitest-notification-provider-1";
+
+    await providers.sendProviderRegister(
+      client,
+      {
+        service_id: serviceId,
+        service_type: { Notifications: "Webhook" },
+        provider: toBytes(providerId),
+        provider_public_key: toBytes(provider.publicKey),
+        endpoints: ["https://example.invalid/webhook"],
+        supported_ofs: [1500, 6000],
+        region: null,
+        capabilities: ["Webhook"],
+        pricing: null,
+        timestamp: Date.now(),
+      },
+      provider,
+    );
+
+    const update: SubscriptionUpdate = {
+      wallet: toBytes(walletId),
+      wallet_public_key: toBytes(wallet.publicKey),
+      enabled_categories: ["Trading"],
+      timestamp: Date.now(),
+    };
+    await notifications.sendSubscriptionUpdate(client, update, wallet);
+
+    const report: DeliveryReport = {
+      notification_id: "vitest-notification-1",
+      service_id: serviceId,
+      provider: toBytes(providerId),
+      provider_public_key: toBytes(provider.publicKey),
+      recipient_wallet: toBytes(walletId),
+      trigger: "TradeCompleted",
+      status: "Delivered",
+      timestamp: Date.now(),
+    };
+    await notifications.sendDeliveryReport(client, report, provider);
+
+    const receipts = await notifications.getDeliveryReceiptsByWallet(client, walletId);
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]?.status).toBe("Delivered");
   });
 });

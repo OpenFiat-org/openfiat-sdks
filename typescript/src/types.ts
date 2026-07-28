@@ -148,3 +148,160 @@ export interface ServiceRecord {
   registered_at: TimestampMs;
   last_health_update: TimestampMs;
 }
+
+// --- Advertisements (OFS-2100) ---
+
+export type Direction = "Buy" | "Sell";
+
+export type PricingModel =
+  | { Fixed: { price: Amount } }
+  | { Floating: { oracle_provider: string; premium_bps: number } };
+
+export type AdvertisementStatus = "Active" | "Disabled" | "Vacation";
+
+export interface AdvertisementCreate {
+  id: string;
+  merchant: PeerIdBytes;
+  merchant_public_key: PublicKeyBytes;
+  asset: string;
+  direction: Direction;
+  fiat_currency: string;
+  min_trade: Amount;
+  max_trade: Amount;
+  initial_liquidity: Amount;
+  pricing: PricingModel;
+  payment_methods: string[];
+  timestamp: TimestampMs;
+}
+
+export interface SignedAdvertisementCreate {
+  create: AdvertisementCreate;
+  signature: SignatureBytes;
+}
+
+export interface Advertisement {
+  id: string;
+  merchant: PeerIdBytes;
+  merchant_public_key: PublicKeyBytes;
+  asset: string;
+  direction: Direction;
+  fiat_currency: string;
+  min_trade: Amount;
+  max_trade: Amount;
+  available_liquidity: Amount;
+  pricing: PricingModel;
+  payment_methods: string[];
+  status: AdvertisementStatus;
+  created_at: TimestampMs;
+  updated_at: TimestampMs;
+}
+
+// --- Reservations (OFS-2200) ---
+
+export type ReservationState = "EscrowLocked" | "Cancelled" | "Expired";
+
+export interface ReservationRequest {
+  id: string;
+  advertisement_id: string;
+  requester: PeerIdBytes;
+  requester_public_key: PublicKeyBytes;
+  amount: Amount;
+  timestamp: TimestampMs;
+}
+
+export interface SignedReservationRequest {
+  request: ReservationRequest;
+  signature: SignatureBytes;
+}
+
+export interface Reservation {
+  id: string;
+  advertisement_id: string;
+  requester: PeerIdBytes;
+  requester_public_key: PublicKeyBytes;
+  amount: Amount;
+  state: ReservationState;
+  requested_at: TimestampMs;
+  updated_at: TimestampMs;
+  expires_at: TimestampMs;
+}
+
+// --- Notifications (OFS-6000) ---
+
+export type NotificationCategory =
+  | "Trading"
+  | "Marketplace"
+  | "Disputes"
+  | "Governance"
+  | "Infrastructure";
+
+export type NotificationTrigger =
+  | "ReservationCreated"
+  | "ReservationExpiring"
+  | "PaymentSubmitted"
+  | "SettlementApproved"
+  | "EscrowReleased"
+  | "TradeCompleted"
+  | "AdvertisementDisabled"
+  | "ReputationUpdated"
+  | "EvidenceRequested"
+  | "ResolutionIssued"
+  | "ProposalPublished"
+  | "VotingStarted"
+  | "ProposalActivated"
+  | "SnapshotAvailable"
+  | "NodeMaintenance"
+  | "ProviderOffline";
+
+export type DeliveryStatus =
+  | "Queued"
+  | "Sent"
+  | "Delivered"
+  | "Read"
+  | "Failed"
+  | "Retried"
+  | "Expired";
+
+export interface SubscriptionUpdate {
+  wallet: PeerIdBytes;
+  wallet_public_key: PublicKeyBytes;
+  enabled_categories: NotificationCategory[];
+  timestamp: TimestampMs;
+}
+
+export interface SignedSubscriptionUpdate {
+  update: SubscriptionUpdate;
+  signature: SignatureBytes;
+}
+
+export interface Subscription {
+  wallet: PeerIdBytes;
+  wallet_public_key: PublicKeyBytes;
+  enabled_categories: NotificationCategory[];
+  updated_at: TimestampMs;
+}
+
+export interface DeliveryReport {
+  notification_id: string;
+  service_id: string;
+  provider: PeerIdBytes;
+  provider_public_key: PublicKeyBytes;
+  recipient_wallet: PeerIdBytes;
+  trigger: NotificationTrigger;
+  status: DeliveryStatus;
+  timestamp: TimestampMs;
+}
+
+export interface SignedDeliveryReport {
+  report: DeliveryReport;
+  signature: SignatureBytes;
+}
+
+export interface DeliveryReceipt {
+  notification_id: string;
+  service_id: string;
+  recipient_wallet: PeerIdBytes;
+  trigger: NotificationTrigger;
+  status: DeliveryStatus;
+  updated_at: TimestampMs;
+}
