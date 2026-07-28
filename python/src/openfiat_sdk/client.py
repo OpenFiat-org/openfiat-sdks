@@ -11,7 +11,7 @@ from .errors import NotImplementedYetError
 class ClientConfig:
     """Configuration for a :class:`Client`."""
 
-    endpoint: str = "https://rpc.openfiat.org"
+    endpoint: str = "https://rpc.openfiat.network"
     timeout_ms: int = 30_000
 
 

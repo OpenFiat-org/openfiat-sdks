@@ -4,7 +4,7 @@ import { Client, defaultClientConfig } from "../src/client.js";
 describe("Client", () => {
   it("uses the default endpoint", () => {
     const client = new Client();
-    expect(client.config.endpoint).toBe("https://rpc.openfiat.org");
+    expect(client.config.endpoint).toBe("https://rpc.openfiat.network");
   });
 
   it("accepts a custom config", () => {

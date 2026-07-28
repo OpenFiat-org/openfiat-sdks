@@ -11,7 +11,7 @@ export interface ClientConfig {
 /** Default client configuration, pointing at the public OpenFiat RPC endpoint. */
 export function defaultClientConfig(): ClientConfig {
   return {
-    endpoint: "https://rpc.openfiat.org",
+    endpoint: "https://rpc.openfiat.network",
     timeoutMs: 30_000,
   };
 }

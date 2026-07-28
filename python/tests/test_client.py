@@ -3,7 +3,7 @@ from openfiat_sdk import Client, ClientConfig
 
 def test_default_endpoint() -> None:
     client = Client()
-    assert client.config.endpoint == "https://rpc.openfiat.org"
+    assert client.config.endpoint == "https://rpc.openfiat.network"
 
 
 def test_custom_config() -> None:

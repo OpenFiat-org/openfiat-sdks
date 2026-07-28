@@ -19,6 +19,6 @@ mod tests {
     #[test]
     fn client_can_be_constructed() {
         let client = Client::new(ClientConfig::default());
-        assert_eq!(client.config().endpoint, "https://rpc.openfiat.org");
+        assert_eq!(client.config().endpoint, "https://rpc.openfiat.network");
     }
 }

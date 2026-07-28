@@ -14,7 +14,7 @@ pub struct ClientConfig {
 impl Default for ClientConfig {
     fn default() -> Self {
         Self {
-            endpoint: "https://rpc.openfiat.org".to_string(),
+            endpoint: "https://rpc.openfiat.network".to_string(),
             timeout_ms: 30_000,
         }
     }
