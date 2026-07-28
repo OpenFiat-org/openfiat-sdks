@@ -21,3 +21,4 @@ export * as notifications from "./methods/notifications.js";
 export * as oracles from "./methods/oracles.js";
 export * as providers from "./methods/providers.js";
 export * as reservations from "./methods/reservations.js";
+export * as onchain from "./onchain/index.js";

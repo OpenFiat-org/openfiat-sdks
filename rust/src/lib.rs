@@ -12,6 +12,7 @@ pub mod client;
 pub mod error;
 mod jsonrpc;
 pub mod methods;
+pub mod onchain;
 pub mod wallet;
 
 pub use client::{Client, ClientConfig};

@@ -49,12 +49,25 @@ solana-transaction = { version = "3", features = ["bincode", "serde"] }
 solana-message = { version = "3", features = ["bincode"] }
 solana-hash = "3"
 solana-signature = "3"
-solana-pubkey = "4"
+# `curve25519` enables `Pubkey::find_program_address` (client-side PDA
+# derivation) and `borsh` implements `BorshSerialize`/`BorshDeserialize`
+# on `Pubkey` itself (an instruction arg in several `onchain` builders,
+# e.g. governance's `update_config_parameter`) — both needed by
+# `onchain::{escrow,staking,governance}`, off by default since most
+# callers of this crate never touch on-chain instructions directly.
+solana-pubkey = { version = "4", features = ["curve25519", "borsh"] }
 solana-keypair = "3"
 solana-signer = "3"
 solana-instruction = "3"
 solana-system-interface = { version = "2", features = ["bincode"] }
 bincode = "1.3"
+# Encodes/decodes on-chain instruction args exactly as Anchor's own
+# `#[program]` macro does (it derives `AnchorSerialize`/`AnchorDeserialize`
+# on top of Borsh) — this SDK has no dependency on `anchor-lang` itself
+# (a much heavier dependency with its own Solana SDK version pins that
+# would conflict with the pins above), so it hand-builds each
+# instruction's discriminator + Borsh-encoded args directly instead.
+borsh = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
@@ -66,3 +79,12 @@ openfiat-api = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "d
 openfiat-metrics = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "d8550c1dc706d053ba6339e3ee7f7c744dc069c4", package = "openfiat-metrics" }
 openfiat-storage = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "d8550c1dc706d053ba6339e3ee7f7c744dc069c4", package = "openfiat-storage" }
 axum = "0.8.9"
+# Test-only: talks directly to a real `solana-test-validator` for
+# `tests/onchain_live_validator.rs` — proves `onchain::staking`'s
+# builders produce instructions a real deployed program actually
+# accepts, not just well-formed bytes. Pinned to "3" like
+# `openfiat-core/crates/chain`'s own `solana-client` dependency (the 4.x
+# line has an unresolved internal wincode conflict, per this crate's own
+# `solana-transaction`/`solana-message` comment above).
+solana-client = "3"
+solana-commitment-config = "3"
