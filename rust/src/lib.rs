@@ -1,13 +1,18 @@
 //! Official Rust SDK for the OpenFiat protocol.
 //!
-//! This crate provides a typed client for interacting with an OpenFiat node
-//! over its RPC surface (see `openfiat-core`'s `rpc`/`api` crates), plus
-//! helpers mirroring the protocol's core domain objects (identity, trade,
-//! wallet). It currently defines the public API surface only; wire-level
-//! implementation lands alongside `openfiat-core`'s RPC layer.
+//! A typed [`Client`] for an OpenFiat node's JSON-RPC 2.0 surface
+//! (OFS-8200), reusing `openfiat-core`'s own domain types directly (see
+//! `Cargo.toml`'s doc comment) so request/response shapes can never
+//! drift from what a real node runs. `Client`'s domain-specific typed
+//! methods (`get_advertisement`, `send_oracle_publish`, ...) live in
+//! `crate::methods`, one module per domain, each adding to the same
+//! `Client` via its own `impl` block.
 
 pub mod client;
 pub mod error;
+mod jsonrpc;
+pub mod methods;
+pub mod wallet;
 
 pub use client::{Client, ClientConfig};
 pub use error::{Error, Result};
