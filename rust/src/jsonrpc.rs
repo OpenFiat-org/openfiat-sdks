@@ -11,19 +11,6 @@ pub(crate) struct Request<P> {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(bound(deserialize = "R: Deserialize<'de>"))]
-pub(crate) struct Response<R> {
-    #[allow(dead_code)]
-    pub jsonrpc: String,
-    #[allow(dead_code)]
-    pub id: serde_json::Value,
-    #[serde(default = "Option::default")]
-    pub result: Option<R>,
-    #[serde(default = "Option::default")]
-    pub error: Option<ResponseError>,
-}
-
-#[derive(Debug, Deserialize)]
 pub(crate) struct ResponseError {
     pub code: i64,
     pub message: String,

@@ -4,7 +4,7 @@
 //! methods instead of `call` directly.
 
 use crate::error::{Error, Result};
-use crate::jsonrpc::{APPLICATION_ERROR, Request, Response};
+use crate::jsonrpc::{APPLICATION_ERROR, Request, ResponseError};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::Serialize;
@@ -80,9 +80,24 @@ impl Client {
             .await?
             .text()
             .await?;
-        let response: Response<R> = serde_json::from_str(&text)?;
 
-        if let Some(error) = response.error {
+        // Deserialized as a generic `Value` first, deliberately not
+        // straight into a `{ result: Option<R>, error: Option<...> }`
+        // struct: serde's `Option<T>` deserialization treats a JSON
+        // `null` the same as the key being *absent* regardless of `T`,
+        // so a successful `()`-returning method (`"result": null`, a
+        // real, correctly-shaped success) would be indistinguishable
+        // from a malformed response with no `result` key at all. Reading
+        // the raw object and checking key *presence* via `Map::get`
+        // (which does distinguish "absent" from "present, null") is the
+        // only reliable way to tell those two apart.
+        let value: serde_json::Value = serde_json::from_str(&text)?;
+        let object = value
+            .as_object()
+            .ok_or_else(|| Error::JsonRpc(0, "response was not a JSON object".to_string()))?;
+
+        if let Some(error_value) = object.get("error") {
+            let error: ResponseError = serde_json::from_value(error_value.clone())?;
             return Err(if error.code == APPLICATION_ERROR {
                 let data = error.data.unwrap_or(crate::jsonrpc::ErrorData {
                     ofs_error_code: None,
@@ -97,12 +112,14 @@ impl Client {
                 Error::JsonRpc(error.code, error.message)
             });
         }
-        response.result.ok_or_else(|| {
-            Error::JsonRpc(
+
+        match object.get("result") {
+            Some(result_value) => Ok(serde_json::from_value(result_value.clone())?),
+            None => Err(Error::JsonRpc(
                 0,
                 "response carried neither a result nor an error".to_string(),
-            )
-        })
+            )),
+        }
     }
 
     /// Base64-encode an already-signed domain event as JSON and submit

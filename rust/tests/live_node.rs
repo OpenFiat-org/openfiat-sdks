@@ -9,6 +9,8 @@ use openfiat_governance::record::ProposalCategory;
 use openfiat_network::identity::peer_id_from_public_key;
 use openfiat_sdk::wallet::Keypair;
 use openfiat_sdk::{Client, ClientConfig};
+use openfiat_sessions::SessionId;
+use openfiat_sessions::events::{SessionCreate, SessionRevoke};
 use openfiat_storage::mem::MemoryStore;
 use openfiat_types::Timestamp;
 use std::sync::Arc;
@@ -41,6 +43,56 @@ async fn get_version_round_trips_against_a_real_node() {
 
     let health = client.get_health().await.unwrap();
     assert_eq!(health, "ok");
+}
+
+/// A `sendX` method whose success value is `()` serializes as
+/// `"result": null` on the wire — `Client::call` must treat that as a
+/// real success, not confuse it with a response carrying neither a
+/// result nor an error (a bug this exact scenario caught: `serde`'s
+/// `Option<T>` deserialization treats JSON `null` as "absent" regardless
+/// of `T`, so naively deserializing straight into `Option<R>` collapses
+/// a genuine `null` success the same way it would a malformed response).
+#[tokio::test]
+async fn a_unit_returning_send_method_is_not_mistaken_for_a_malformed_response() {
+    let endpoint = spawn_node().await;
+    let client = Client::new(ClientConfig {
+        endpoint,
+        timeout_ms: 5_000,
+    });
+
+    let wallet = Keypair::generate();
+    let wallet_peer_id = peer_id_from_public_key(&wallet.public_key()).unwrap();
+    let session_id = client
+        .send_session_establish(
+            SessionCreate {
+                id: SessionId::new("live-node-unit-return-test"),
+                wallet: wallet_peer_id.clone(),
+                wallet_public_key: wallet.public_key(),
+                client: "web".to_string(),
+                host_node: wallet_peer_id.clone(),
+                permissions: vec!["trade".to_string()],
+                timestamp: Timestamp::now(),
+                expires_at: Timestamp::from_millis(Timestamp::now().as_millis() + 3_600_000),
+            },
+            &wallet,
+        )
+        .await
+        .unwrap();
+
+    // sendSessionRevoke's RPC handler returns `Result<(), RpcError>` —
+    // this must come back `Ok(())`, not `Err(JsonRpc(0, "... neither a
+    // result nor an error"))`.
+    client
+        .send_session_revoke(
+            SessionRevoke {
+                session_id,
+                wallet: wallet_peer_id,
+                timestamp: Timestamp::now(),
+            },
+            &wallet,
+        )
+        .await
+        .expect("a `()`-returning sendX method must be recognized as a real success");
 }
 
 #[tokio::test]
