@@ -34,6 +34,10 @@ pub struct LatestBlockhash {
     pub slot: u64,
 }
 
+/// Deserialized purely to assert the node answered `sendTransaction` in the
+/// shape this SDK expects; both callers discard the value. `queued` is
+/// therefore never read, but removing it would drop that check — serde would
+/// then accept any object at all, including an error payload.
 #[derive(Debug, Deserialize)]
 struct SendTransactionResult {
     #[allow(dead_code)]

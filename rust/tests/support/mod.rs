@@ -349,6 +349,10 @@ pub async fn spawn_node_with_chain(rpc_url: &str) -> (String, RpcHandle) {
     (format!("http://{addr}"), rpc_handle)
 }
 
+/// Each integration test file is its own crate, so every one of them compiles
+/// this module in full and warns about whatever it happens not to call. The
+/// allow covers the binaries that do not use this helper rather than the
+/// helper being unused outright.
 #[allow(dead_code)]
 pub fn commitment_confirmed() -> CommitmentConfig {
     CommitmentConfig::confirmed()
