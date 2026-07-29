@@ -15,7 +15,7 @@ cargo run --example oracle_provider
 ```
 
 `examples/oracle_provider.rs` registers a Service Registry provider and
-publishes a signed rate against `http://localhost:8080` by default
+publishes a signed rate against `http://localhost:7080` by default
 (`OPENFIAT_NODE_URL` overrides it) — the fastest way to see a real
 sign-and-submit round trip against a live node.
 

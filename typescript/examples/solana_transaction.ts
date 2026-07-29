@@ -6,8 +6,8 @@
  * unsigned instruction or a private key.
  *
  * Run against a local node with `pnpm tsx examples/solana_transaction.ts`.
- * By default it targets `http://localhost:8080` — start one with
- * `CLI_HTTP_ADDR=127.0.0.1:8080 cargo run -p openfiat-cli` from
+ * By default it targets `http://localhost:7080` — start one with
+ * `CLI_HTTP_ADDR=127.0.0.1:7080 cargo run -p openfiat-cli` from
  * `openfiat-core`.
  *
  * A freshly started node has no `RpcConnected` mode configured and no
@@ -21,7 +21,7 @@ import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js"
 import { Client, chain } from "../src/index.js";
 
 async function main() {
-  const endpoint = process.env.OPENFIAT_NODE_URL ?? "http://localhost:8080";
+  const endpoint = process.env.OPENFIAT_NODE_URL ?? "http://localhost:7080";
   const client = new Client({ endpoint, timeoutMs: 30_000 });
 
   const status = await chain.getChainStatus(client);

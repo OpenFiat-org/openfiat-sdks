@@ -4,8 +4,8 @@
  * provider reports a delivery.
  *
  * Run against a local node with `pnpm tsx examples/notification_provider.ts`.
- * By default it targets `http://localhost:8080` — start one with
- * `CLI_HTTP_ADDR=127.0.0.1:8080 cargo run -p openfiat-cli` from
+ * By default it targets `http://localhost:7080` — start one with
+ * `CLI_HTTP_ADDR=127.0.0.1:7080 cargo run -p openfiat-cli` from
  * `openfiat-core`.
  */
 import {
@@ -21,7 +21,7 @@ import {
 } from "../src/index.js";
 
 async function main() {
-  const endpoint = process.env.OPENFIAT_NODE_URL ?? "http://localhost:8080";
+  const endpoint = process.env.OPENFIAT_NODE_URL ?? "http://localhost:7080";
   const client = new Client({ endpoint, timeoutMs: 30_000 });
 
   // In production, load a persistent identity instead — see

@@ -70,10 +70,10 @@ jobs:
       - name: Start a real openfiat-node in the background
         working-directory: openfiat-core
         run: |
-          CLI_DATA_DIR=${{ runner.temp }}/openfiat-node-data CLI_HTTP_ADDR=127.0.0.1:8080 \
+          CLI_DATA_DIR=${{ runner.temp }}/openfiat-node-data CLI_HTTP_ADDR=127.0.0.1:7080 \
             cargo run -p openfiat-cli &
           for _ in $(seq 1 60); do
-            curl -sf http://127.0.0.1:8080/health && exit 0
+            curl -sf http://127.0.0.1:7080/health && exit 0
             sleep 2
           done
           echo "openfiat-node never became healthy" >&2
@@ -89,7 +89,7 @@ jobs:
       - working-directory: typescript
         run: pnpm test
         env:
-          OPENFIAT_NODE_URL: http://127.0.0.1:8080
+          OPENFIAT_NODE_URL: http://127.0.0.1:7080
 
   python-sdk:
     name: python/ (ruff/pytest)

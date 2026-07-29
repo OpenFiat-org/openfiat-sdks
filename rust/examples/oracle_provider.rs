@@ -2,8 +2,8 @@
 //! Service Registry, then publish a signed exchange-rate record.
 //!
 //! Run against a local node with `cargo run --example oracle_provider`.
-//! By default it targets `http://localhost:8080` — start one with
-//! `CLI_HTTP_ADDR=127.0.0.1:8080 cargo run -p openfiat-cli` from
+//! By default it targets `http://localhost:7080` — start one with
+//! `CLI_HTTP_ADDR=127.0.0.1:7080 cargo run -p openfiat-cli` from
 //! `openfiat-core`.
 
 use openfiat_oracles::OracleId;
@@ -22,7 +22,7 @@ fn peer_id(keypair: &Keypair) -> PeerId {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let endpoint =
-        std::env::var("OPENFIAT_NODE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+        std::env::var("OPENFIAT_NODE_URL").unwrap_or_else(|_| "http://localhost:7080".to_string());
     let client = Client::new(ClientConfig {
         endpoint,
         ..ClientConfig::default()

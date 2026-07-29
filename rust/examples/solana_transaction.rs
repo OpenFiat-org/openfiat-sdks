@@ -5,8 +5,8 @@
 //! private key.
 //!
 //! Run against a local node with `cargo run --example solana_transaction`.
-//! By default it targets `http://localhost:8080` — start one with
-//! `CLI_HTTP_ADDR=127.0.0.1:8080 cargo run -p openfiat-cli` from
+//! By default it targets `http://localhost:7080` — start one with
+//! `CLI_HTTP_ADDR=127.0.0.1:7080 cargo run -p openfiat-cli` from
 //! `openfiat-core`.
 //!
 //! A freshly started node has no `RpcConnected` mode configured and no
@@ -29,7 +29,7 @@ use solana_transaction::versioned::VersionedTransaction;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let endpoint =
-        std::env::var("OPENFIAT_NODE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+        std::env::var("OPENFIAT_NODE_URL").unwrap_or_else(|_| "http://localhost:7080".to_string());
     let client = Client::new(ClientConfig {
         endpoint,
         ..ClientConfig::default()

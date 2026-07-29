@@ -14,7 +14,7 @@ pnpm add @openfiat/sdk
 ```ts
 import { Client, generateKeypair, oracles } from "@openfiat/sdk";
 
-const client = new Client({ endpoint: "http://localhost:8080", timeoutMs: 30_000 });
+const client = new Client({ endpoint: "http://localhost:7080", timeoutMs: 30_000 });
 const version = await client.call("getVersion", {});
 
 // send* methods take the domain's own unsigned event shape and a
