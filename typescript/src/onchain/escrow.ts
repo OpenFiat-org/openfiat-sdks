@@ -585,6 +585,9 @@ export function chargeAdListingFeeIx(
   merchant: PublicKey,
   mint: PublicKey,
   devTreasury: PublicKey,
+  ecosystemTreasury: PublicKey,
+  infraTreasury: PublicKey,
+  emergencyReserve: PublicKey,
   advertisementId: Uint8Array,
 ): TransactionInstruction {
   const [feeConfig] = feeConfigPda();
@@ -598,6 +601,9 @@ export function chargeAdListingFeeIx(
       meta(liquidityVault, false, true),
       meta(tokenVault, false, true),
       meta(devTreasury, false, true),
+      meta(ecosystemTreasury, false, true),
+      meta(infraTreasury, false, true),
+      meta(emergencyReserve, false, true),
       meta(mint, false, false),
       meta(TOKEN_2022_PROGRAM_ID, false, false),
     ],

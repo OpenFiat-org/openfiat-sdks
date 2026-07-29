@@ -236,11 +236,22 @@ describe("escrow instructions", () => {
     ]);
   });
 
-  it("chargeAdListingFeeIx bills the merchant's own vault", () => {
+  it("chargeAdListingFeeIx bills the merchant's own vault and splits four ways", () => {
     const openMint = fakePubkey(42);
     const devTreasury = fakePubkey(43);
+    const ecosystemTreasury = fakePubkey(44);
+    const infraTreasury = fakePubkey(45);
+    const emergencyReserve = fakePubkey(46);
     const advertisementId = new Uint8Array(32).fill(11);
-    const ix = chargeAdListingFeeIx(merchant, openMint, devTreasury, advertisementId);
+    const ix = chargeAdListingFeeIx(
+      merchant,
+      openMint,
+      devTreasury,
+      ecosystemTreasury,
+      infraTreasury,
+      emergencyReserve,
+      advertisementId,
+    );
     expectDiscriminator(ix, [200, 39, 46, 240, 232, 173, 134, 196]);
     expectAccounts(ix, [
       { pubkey: merchant, isSigner: true, isWritable: false },
@@ -248,6 +259,9 @@ describe("escrow instructions", () => {
       { pubkey: liquidityVaultPda(merchant, openMint)[0], isSigner: false, isWritable: true },
       { pubkey: liquidityVaultTokensPda(merchant, openMint)[0], isSigner: false, isWritable: true },
       { pubkey: devTreasury, isSigner: false, isWritable: true },
+      { pubkey: ecosystemTreasury, isSigner: false, isWritable: true },
+      { pubkey: infraTreasury, isSigner: false, isWritable: true },
+      { pubkey: emergencyReserve, isSigner: false, isWritable: true },
       { pubkey: openMint, isSigner: false, isWritable: false },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);

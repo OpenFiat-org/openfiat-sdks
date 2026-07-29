@@ -431,10 +431,14 @@ pub fn initialize_arbitration_pool_ix(admin: &Pubkey, mint: &Pubkey) -> Instruct
 /// liquidity vault is the source. `advertisement_id` is carried for the
 /// emitted event only, as a join key for indexers; the program stores no
 /// per-advertisement state.
+#[allow(clippy::too_many_arguments)]
 pub fn charge_ad_listing_fee_ix(
     merchant: &Pubkey,
     mint: &Pubkey,
     dev_treasury: &Pubkey,
+    ecosystem_treasury: &Pubkey,
+    infra_treasury: &Pubkey,
+    emergency_reserve: &Pubkey,
     advertisement_id: [u8; 32],
 ) -> Instruction {
     let (fee_config, _) = fee_config_pda();
@@ -450,6 +454,9 @@ pub fn charge_ad_listing_fee_ix(
             AccountMeta::new(liquidity_vault, false),
             AccountMeta::new(token_vault, false),
             AccountMeta::new(*dev_treasury, false),
+            AccountMeta::new(*ecosystem_treasury, false),
+            AccountMeta::new(*infra_treasury, false),
+            AccountMeta::new(*emergency_reserve, false),
             AccountMeta::new_readonly(*mint, false),
             AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
         ],
