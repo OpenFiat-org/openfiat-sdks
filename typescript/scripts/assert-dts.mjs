@@ -34,15 +34,36 @@ const REQUIRED = [
   "SubscriptionDestination",
 ];
 
-const target = "dist/index.d.ts";
+// tsup names the declaration after the format it accompanies: `.d.ts`
+// beside ESM output, `.d.cts` beside CJS. Which of them exists depends on
+// the formats requested, so check every candidate and require at least one
+// rather than hardcoding a name — a missing file and a degenerate file are
+// different failures and should not be reported as the same one.
+const candidates = ["dist/index.d.ts", "dist/index.d.cts"];
 
-let source;
-try {
-  source = readFileSync(target, "utf8");
-} catch (error) {
-  console.error(`assert-dts: cannot read ${target}: ${error.message}`);
+const found = candidates
+  .map((path) => {
+    try {
+      return { path, source: readFileSync(path, "utf8") };
+    } catch {
+      return null;
+    }
+  })
+  .filter((entry) => entry !== null);
+
+if (found.length === 0) {
+  console.error(
+    `assert-dts: no declaration bundle found. Looked for:\n` +
+      candidates.map((c) => `  - ${c}`).join("\n") +
+      `\n\nRun this after a build that emits declarations.`
+  );
   process.exit(1);
 }
+
+// Every emitted declaration must be complete, not just one of them.
+const { path: target, source } = found.reduce((worst, entry) =>
+  entry.source.length < worst.source.length ? entry : worst,
+);
 
 const missing = REQUIRED.filter((name) => !new RegExp(`\\b${name}\\b`).test(source));
 
