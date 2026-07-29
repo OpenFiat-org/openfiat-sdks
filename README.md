@@ -16,14 +16,24 @@
 
 ## About
 
-`openfiat-sdks` is part of the [OpenFiat](https://github.com/OpenFiat-org)
-ecosystem — an open, decentralized peer-to-peer protocol for exchanging
-stablecoins for local fiat currency. Solana secures asset settlement through
-audited smart contracts; OpenFiat coordinates the peer-to-peer marketplace
-layer (discovery, advertisements, reputation, governance, notifications, and
-more) without centralized infrastructure.
+`openfiat-sdks` is the client-side half of the OpenFiat protocol: typed
+JSON-RPC clients for talking to a running `openfiat-node` (see
+[openfiat-core](https://github.com/OpenFiat-org/openfiat-core)), plus typed
+instruction builders for the three on-chain Anchor programs
+(`openfiat-escrow`, `openfiat-staking`, `openfiat-governance`). Rust and
+TypeScript are the real, fully-built SDKs — wallet signing, per-domain typed
+methods, and on-chain instruction encoding that matches the deployed
+programs' real IDL discriminators (not hand-computed). Python is a typed
+stub: a `Client`/`ClientConfig` shape with tests, but every method (starting
+with `node_info`) currently raises `NotImplementedYetError` — real JSON-RPC
+transport hasn't been wired in yet. Go, Swift, Kotlin, and C# are one level
+further back: a README describing the intended shape, no code at all.
 
-This repository (SDK) — official openfiat sdks (rust, typescript, python; additional languages deferred) and shared reference data.
+Neither the Rust nor the TypeScript SDK depends on `anchor-lang`/
+`anchor-client` — each hand-encodes the Anchor instruction wire format
+directly (an 8-byte discriminator plus Borsh-encoded args), since pulling in
+Anchor's own client would conflict with each SDK's independently pinned
+Solana SDK version.
 
 For the full protocol motivation and design, see the
 [whitepaper](https://github.com/OpenFiat-org/openfiat-specs) and the

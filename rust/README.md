@@ -46,6 +46,31 @@ client.send_transaction(&versioned).await?;
 See [`examples/solana_transaction.rs`](examples/solana_transaction.rs)
 for a complete, runnable example.
 
+## On-chain programs (OFS-4200)
+
+`openfiat_sdk::onchain::{escrow, staking, governance}` builds instructions
+for the three deployed Anchor programs directly — PDA derivation, account
+lists, and Anchor-wire-format instruction data (an 8-byte discriminator
+sourced from the real `anchor build` IDL, plus Borsh-encoded args), with no
+`anchor-lang`/`anchor-client` dependency:
+
+```rust
+use openfiat_sdk::onchain::{Role, staking};
+
+let ix = staking::stake_ix(&owner, Role::Arbitrator, &mint, &from, amount);
+// sign and submit with solana-transaction/solana-keypair, same as the chain
+// bridge above — this module only builds instructions, it never submits one.
+```
+
+See [`examples/stake_and_vote.rs`](examples/stake_and_vote.rs) for a full
+stake → propose → vote sequence across all three programs.
+
+Off-chain dispute methods (`get_dispute`, `get_disputes`,
+`send_arbitrator_join`, `send_vote_commit`, `send_vote_reveal`) are on
+`Client` itself, alongside every other domain — they're gossip protocol
+calls (OFS-2400), not on-chain instructions, so they don't live under
+`onchain`.
+
 ## Errors
 
 Every `Result<T, openfiat_sdk::Error>` distinguishes transport failure
