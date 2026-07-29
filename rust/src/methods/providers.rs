@@ -55,12 +55,22 @@ impl Client {
     }
 
     /// Read a service's earnings statement, proving control of it by
-    /// signing a freshly issued challenge.
+    /// signing a freshly issued challenge. `keypair` must be the key the
+    /// service was registered with.
     ///
-    /// The statement is empty for every service today: the billing
-    /// trigger differs by role and is deliberately unsettled (OFS-4100
-    /// §9.5), so nothing credits the ledger yet. `keypair` must be the
-    /// key the service was registered with.
+    /// Statements are empty for every service today. Per OFS-4100 §9.5:
+    /// notification delivery is the one billable trigger and is not yet
+    /// metered; risk intelligence is open; and **oracle reads and
+    /// snapshot downloads are free by decision**, so those two will never
+    /// accrue here. Charging for either would work against the protocol —
+    /// a priced rate feed is consulted less and the median it feeds gets
+    /// easier to move, and a priced snapshot slows the thing that lets a
+    /// new node join at all.
+    ///
+    /// If you run a standalone oracle or snapshot provider, this will read
+    /// zero permanently: those roles earn no protocol reward and charge
+    /// nothing. They are normally run alongside a node, where compensation
+    /// comes from the node reward pool instead.
     pub async fn get_provider_earnings(
         &self,
         id: impl Into<String>,

@@ -121,9 +121,10 @@ export type BillingUnit = "Request" | "Trade" | "Month";
  * A provider's declared price. The mint is the token's identity — a symbol
  * is ambiguous across clusters and spoofable, a mint address is neither.
  *
- * Declaring a price is not the same as being able to collect it: the
- * billing trigger differs by role and is deliberately unsettled, so
- * nothing charges against this yet.
+ * Optional, and meaningfully so: absent pricing already means free, so
+ * there is deliberately no "free" sentinel to add. Oracle and snapshot
+ * providers leave this unset because their service is free by decision
+ * (OFS-4100 §9.5), not by omission.
  */
 export interface ServicePricing {
   /** Base58 SPL mint address billed in. */
