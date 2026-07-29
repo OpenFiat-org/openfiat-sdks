@@ -25,7 +25,8 @@ import {
   tradeEscrowTokensPda,
   withdrawLiquidityIx,
 } from "../src/onchain/escrow.js";
-import { DisputeOutcome, ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, TOKEN_2022_PROGRAM_ID } from "../src/onchain/constants.js";
+import { DisputeOutcome, ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, Role, TOKEN_2022_PROGRAM_ID } from "../src/onchain/constants.js";
+import { stakeAccountPda, stakingConfigPda } from "../src/onchain/staking.js";
 import { expectAccounts, expectDiscriminator, fakePubkey } from "./onchain-helpers.js";
 
 const merchant = fakePubkey(1);
@@ -266,15 +267,23 @@ describe("escrow instructions", () => {
     ]);
   });
 
-  it("commitDisputeVoteIx", () => {
+  it("commitDisputeVoteIx carries the stake accounts the eligibility gate reads", () => {
+    // The program rejects a commit from a wallet below the Arbitrator
+    // minimum. It can only check that with both accounts present, so
+    // omitting either makes every commit fail to deserialize rather than
+    // quietly skip the check.
     const arbitrator = fakePubkey(21);
     const commitment = new Uint8Array(32).fill(7);
     const ix = commitDisputeVoteIx(arbitrator, reservationId, commitment);
     expectDiscriminator(ix, [210, 14, 34, 127, 75, 185, 189, 168]);
     const [disputeCase] = disputeCasePda(reservationId);
+    const [stakingConfig] = stakingConfigPda();
+    const [arbitratorStake] = stakeAccountPda(arbitrator, Role.Arbitrator);
     expectAccounts(ix, [
       { pubkey: arbitrator, isSigner: true, isWritable: false },
       { pubkey: disputeCase, isSigner: false, isWritable: true },
+      { pubkey: stakingConfig, isSigner: false, isWritable: false },
+      { pubkey: arbitratorStake, isSigner: false, isWritable: false },
     ]);
     expect(Array.from(ix.data.subarray(8, 40))).toEqual(Array.from(commitment));
   });

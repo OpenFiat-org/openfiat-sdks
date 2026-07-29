@@ -9,8 +9,8 @@
 //! `reservation_id`, `FeeConfig` is a singleton.
 
 use super::{
-    DisputeOutcome, ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, TOKEN_2022_PROGRAM_ID, instruction_data,
-    system_program_id,
+    DisputeOutcome, ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, Role, TOKEN_2022_PROGRAM_ID,
+    instruction_data, system_program_id,
 };
 use crate::onchain::staking;
 use borsh::BorshSerialize;
@@ -474,12 +474,19 @@ pub fn open_dispute_case_ix(
     )
 }
 
+/// Committing requires the arbitrator to hold the `Arbitrator` role's
+/// minimum stake, so the program reads both the staking config and this
+/// arbitrator's own `StakeAccount`. Both are PDAs owned by the *staking*
+/// program (`seeds::program = staking::ID` on-chain) and are derived here
+/// rather than passed in.
 pub fn commit_dispute_vote_ix(
     arbitrator: &Pubkey,
     reservation_id: u64,
     commitment: [u8; 32],
 ) -> Instruction {
     let (dispute_case, _) = dispute_case_pda(reservation_id);
+    let (staking_config, _) = staking::staking_config_pda();
+    let (arbitrator_stake, _) = staking::stake_account_pda(arbitrator, Role::Arbitrator);
     let data = instruction_data([210, 14, 34, 127, 75, 185, 189, 168], commitment);
     Instruction::new_with_bytes(
         ESCROW_PROGRAM_ID,
@@ -487,6 +494,8 @@ pub fn commit_dispute_vote_ix(
         vec![
             AccountMeta::new_readonly(*arbitrator, true),
             AccountMeta::new(dispute_case, false),
+            AccountMeta::new_readonly(staking_config, false),
+            AccountMeta::new_readonly(arbitrator_stake, false),
         ],
     )
 }
@@ -743,6 +752,28 @@ mod tests {
         );
         assert_eq!(ix.accounts.len(), 11);
         assert!(ix.accounts.iter().all(|a| !a.is_signer));
+    }
+
+    #[test]
+    fn commit_dispute_vote_carries_the_stake_accounts_the_eligibility_gate_reads() {
+        // The program rejects a commit from a wallet below the Arbitrator
+        // minimum, which it can only check if both of these are present —
+        // omitting either would make every commit fail deserialization
+        // rather than merely skip the check.
+        let arbitrator = Pubkey::new_unique();
+        let ix = commit_dispute_vote_ix(&arbitrator, 1, [0u8; 32]);
+        assert_eq!(ix.accounts.len(), 4);
+
+        let (expected_config, _) = staking::staking_config_pda();
+        assert_eq!(ix.accounts[2].pubkey, expected_config);
+        assert!(!ix.accounts[2].is_signer);
+        assert!(!ix.accounts[2].is_writable);
+
+        let (expected_stake, _) =
+            staking::stake_account_pda(&arbitrator, super::super::Role::Arbitrator);
+        assert_eq!(ix.accounts[3].pubkey, expected_stake);
+        assert!(!ix.accounts[3].is_signer);
+        assert!(!ix.accounts[3].is_writable);
     }
 
     #[test]

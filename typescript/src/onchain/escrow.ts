@@ -1,8 +1,9 @@
 import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 
 import { enumTag, fixedBytes, i64LE, instructionData, meta, u16LE, u64LE } from "./codec.js";
-import { ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, TOKEN_2022_PROGRAM_ID } from "./constants.js";
+import { ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, Role, TOKEN_2022_PROGRAM_ID } from "./constants.js";
 import type { DisputeOutcome } from "./constants.js";
+import { stakeAccountPda, stakingConfigPda } from "./staking.js";
 
 /**
  * PDA seeds for `openfiat-escrow` (OFS-4200 §4, Phase 4b) — taken
@@ -418,15 +419,28 @@ export function openDisputeCaseIx(
   });
 }
 
+/**
+ * Committing requires the arbitrator to hold the Arbitrator role's
+ * minimum stake — the program reads both the staking config and the
+ * caller's own stake account to check it. Both are PDAs, so they are
+ * derived here rather than asked for.
+ */
 export function commitDisputeVoteIx(
   arbitrator: PublicKey,
   reservationId: bigint,
   commitment: Uint8Array,
 ): TransactionInstruction {
   const [disputeCase] = disputeCasePda(reservationId);
+  const [stakingConfig] = stakingConfigPda();
+  const [arbitratorStake] = stakeAccountPda(arbitrator, Role.Arbitrator);
   return new TransactionInstruction({
     programId: ESCROW_PROGRAM_ID,
-    keys: [meta(arbitrator, true, false), meta(disputeCase, false, true)],
+    keys: [
+      meta(arbitrator, true, false),
+      meta(disputeCase, false, true),
+      meta(stakingConfig, false, false),
+      meta(arbitratorStake, false, false),
+    ],
     data: instructionData(DISCRIMINATORS.commitDisputeVote, fixedBytes(commitment, 32)),
   });
 }
