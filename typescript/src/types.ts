@@ -114,6 +114,24 @@ export type ServiceType =
   | { MarketData: "PriceOracle" | "FxOracle" }
   | { Security: "RiskIntelligenceProvider" | "WalletFlaggingProvider" };
 
+/** What one charge covers (OFS-4100 §9.5). */
+export type BillingUnit = "Request" | "Trade" | "Month";
+
+/**
+ * A provider's declared price. The mint is the token's identity — a symbol
+ * is ambiguous across clusters and spoofable, a mint address is neither.
+ *
+ * Declaring a price is not the same as being able to collect it: the
+ * billing trigger differs by role and is deliberately unsettled, so
+ * nothing charges against this yet.
+ */
+export interface ServicePricing {
+  /** Base58 SPL mint address billed in. */
+  token_mint: string;
+  amount: Amount;
+  unit: BillingUnit;
+}
+
 export interface Registration {
   service_id: string;
   service_type: ServiceType;
@@ -123,7 +141,10 @@ export interface Registration {
   supported_ofs: number[];
   region: string | null;
   capabilities: string[];
-  pricing: string | null;
+  pricing: ServicePricing | null;
+  /** Base58 Solana address earnings are payable to. Required whenever
+   *  `pricing` is set — a node rejects a price with nowhere to be paid. */
+  payout_wallet: string | null;
   timestamp: TimestampMs;
 }
 
@@ -171,10 +192,37 @@ export interface ServiceRecord {
   supported_ofs: number[];
   region: string | null;
   capabilities: string[];
-  pricing: string | null;
+  pricing: ServicePricing | null;
+  payout_wallet: string | null;
   health: HealthState;
   registered_at: TimestampMs;
   last_health_update: TimestampMs;
+}
+
+/** A single-use, expiring challenge authorising one earnings read. */
+export interface EarningsChallenge {
+  service_id: string;
+  /** 32 random bytes, hex-encoded. */
+  nonce: string;
+  expires_at: TimestampMs;
+}
+
+/** One credit to a service, in whichever token the provider bills in. */
+export interface EarningEntry {
+  token_mint: string;
+  amount: Amount;
+  reference: string;
+  credited_at: TimestampMs;
+}
+
+/**
+ * A service's earnings statement. `entries` is empty for every service
+ * today — nothing meters provider work yet, so nothing credits it.
+ */
+export interface ProviderEarnings {
+  service_id: string;
+  payout_wallet: string | null;
+  entries: EarningEntry[];
 }
 
 // --- Advertisements (OFS-2100) ---

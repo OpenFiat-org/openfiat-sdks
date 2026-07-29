@@ -44,6 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         region: Some("Kenya".to_string()),
         capabilities: vec!["USDC/KES".to_string()],
         pricing: None,
+        payout_wallet: None,
         timestamp: Timestamp::now(),
     };
     let service_id = client

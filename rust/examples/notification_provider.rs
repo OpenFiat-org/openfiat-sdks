@@ -49,6 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         region: None,
         capabilities: vec!["Webhook".to_string()],
         pricing: None,
+        payout_wallet: None,
         timestamp: Timestamp::now(),
     };
     client

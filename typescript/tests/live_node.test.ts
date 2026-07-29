@@ -52,6 +52,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
       region: "Kenya",
       capabilities: ["USDC/KES"],
       pricing: null,
+      payout_wallet: null,
       timestamp: Date.now(),
     };
     const serviceId = await providers.sendProviderRegister(client, registration, keypair);
@@ -167,6 +168,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
         region: null,
         capabilities: ["Webhook"],
         pricing: null,
+        payout_wallet: null,
         timestamp: Date.now(),
       },
       provider,

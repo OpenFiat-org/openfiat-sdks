@@ -161,6 +161,12 @@ pub(crate) struct SendParams {
     pub data: String,
 }
 
+/// Base64-encode raw bytes for a method that carries them as a string —
+/// the same encoding `sendSigned` uses for its payloads.
+pub(crate) fn encode_base64(bytes: &[u8]) -> String {
+    BASE64.encode(bytes)
+}
+
 /// Base64-encode a [`openfiat_types::PeerId`] the same way OFS-8200's
 /// `WalletParams`/peer-id-bearing methods expect it on the wire.
 pub(crate) fn encode_peer_id(peer_id: &openfiat_types::PeerId) -> String {

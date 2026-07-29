@@ -43,6 +43,7 @@ async function main() {
     region: null,
     capabilities: ["Webhook"],
     pricing: null,
+    payout_wallet: null,
     timestamp: Date.now(),
   };
   await providers.sendProviderRegister(client, registration, provider);

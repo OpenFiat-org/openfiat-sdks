@@ -282,6 +282,7 @@ async fn a_notification_providers_delivery_report_is_readable_back_for_the_walle
                 region: None,
                 capabilities: vec!["Webhook".to_string()],
                 pricing: None,
+                payout_wallet: None,
                 timestamp: Timestamp::now(),
             },
             &provider,

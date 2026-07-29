@@ -38,6 +38,7 @@ async function main() {
     region: "Kenya",
     capabilities: ["USDC/KES"],
     pricing: null,
+    payout_wallet: null,
     timestamp: Date.now(),
   };
   const serviceId = await providers.sendProviderRegister(client, registration, keypair);
