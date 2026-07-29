@@ -134,6 +134,34 @@ export interface SignedRegistration {
 
 export type HealthState = "Online" | "Maintenance" | "Degraded" | "Offline";
 
+/**
+ * OFS-1500 §11. Carries no public key: a node verifies it against whichever
+ * key the registry already holds for this Service ID, not a self-asserted one.
+ */
+export interface HealthUpdate {
+  service_id: string;
+  provider: PeerIdBytes;
+  state: HealthState;
+  timestamp: TimestampMs;
+}
+
+export interface SignedHealthUpdate {
+  update: HealthUpdate;
+  signature: SignatureBytes;
+}
+
+/** OFS-1500 §17. Verified the same way as a health update. */
+export interface Withdrawal {
+  service_id: string;
+  provider: PeerIdBytes;
+  timestamp: TimestampMs;
+}
+
+export interface SignedWithdrawal {
+  withdrawal: Withdrawal;
+  signature: SignatureBytes;
+}
+
 export interface ServiceRecord {
   service_id: string;
   service_type: ServiceType;
