@@ -17,7 +17,13 @@ import {
   stakingConfigPda,
   withdrawUnstakedIx,
 } from "../src/onchain/staking.js";
-import { RENT_SYSVAR_ID, Role, STAKING_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "../src/onchain/constants.js";
+import {
+  banRecordPda,
+  RENT_SYSVAR_ID,
+  Role,
+  STAKING_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
+} from "../src/onchain/constants.js";
 import { expectAccounts, expectDiscriminator, fakePubkey } from "./onchain-helpers.js";
 
 const owner = fakePubkey(1);
@@ -96,6 +102,7 @@ describe("staking instructions", () => {
     const [stakeVault] = stakeVaultPda();
     expectAccounts(ix, [
       { pubkey: owner, isSigner: true, isWritable: false },
+      { pubkey: banRecordPda(owner)[0], isSigner: false, isWritable: false },
       { pubkey: stakingConfig, isSigner: false, isWritable: false },
       { pubkey: stakeAccount, isSigner: false, isWritable: true },
       { pubkey: stakeVault, isSigner: false, isWritable: true },
@@ -111,6 +118,10 @@ describe("staking instructions", () => {
     expectDiscriminator(ix, [44, 154, 110, 253, 160, 202, 54, 34]);
     const [stakingConfig] = stakingConfigPda();
     const [stakeAccount] = stakeAccountPda(owner, Role.Merchant);
+    // No ban gate here, deliberately: request_unstake begins the
+    // *withdrawal* of a wallet's own stake. OFS-7100 §12 excludes banned
+    // wallets from depositing, not from recovering what they already
+    // deposited — gating this would be confiscation, not exclusion.
     expectAccounts(ix, [
       { pubkey: owner, isSigner: true, isWritable: false },
       { pubkey: stakingConfig, isSigner: false, isWritable: false },
@@ -189,15 +200,18 @@ describe("staking instructions", () => {
   });
 
   it("fundRewardsVaultIx is permissionless — the funder is the only signer", () => {
-    // Gating this on admin would mean re-issuing authority every time a
-    // funding source changed, and the only thing it can do is increase a
-    // pool that pays stakers. Draining stays gated behind claim_rewards.
+    // Still permissionless in the sense that matters: no admin, no
+    // authority to re-issue when a funding source changes, and draining
+    // stays gated behind claim_rewards. The one caller it does turn away
+    // is a banned wallet (OFS-7100 §12) — see the program's own doc
+    // comment for why a pure donation is gated anyway.
     const funder = fakePubkey(60);
     const from = fakePubkey(61);
     const ix = fundRewardsVaultIx(funder, mint, from, 250_000n);
     expectDiscriminator(ix, [157, 74, 89, 172, 187, 7, 119, 161]);
     expectAccounts(ix, [
       { pubkey: funder, isSigner: true, isWritable: false },
+      { pubkey: banRecordPda(funder)[0], isSigner: false, isWritable: false },
       { pubkey: mint, isSigner: false, isWritable: false },
       { pubkey: stakingConfigPda()[0], isSigner: false, isWritable: false },
       { pubkey: rewardsVaultPda()[0], isSigner: false, isWritable: true },

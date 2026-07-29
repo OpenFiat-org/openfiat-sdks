@@ -52,3 +52,43 @@ export enum DisputeOutcome {
   MutualSettlement = 2,
   InvalidDispute = 3,
 }
+
+/**
+ * PDA seed for a `governance::BanRecord` (OFS-7100 §12).
+ *
+ * Lives here rather than in `governance.ts` for the same reason its
+ * Rust counterpart lives in `programs/shared` rather than in the
+ * `governance` crate: `governance.ts` already imports from
+ * `staking.ts`, so a `staking.ts -> governance.ts` import for the ban
+ * helper would close a module cycle. `constants.ts` imports nothing, so
+ * every builder can reach the gate from here.
+ */
+export const BAN_SEED = Buffer.from("ban");
+
+/**
+ * The canonical ban address for a wallet — `[BAN_SEED, wallet]` under
+ * `openfiat-governance`.
+ *
+ * Every gated instruction re-derives this on-chain from its own
+ * signer's key and rejects anything else, so this is not a convenience:
+ * an instruction built with any other account in that slot fails with
+ * `ConstraintSeeds`. The wallet is banned iff this address is occupied;
+ * for an unbanned wallet it names an account that does not exist, which
+ * is exactly what the program expects to see.
+ */
+export function banRecordPda(wallet: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([BAN_SEED, wallet.toBytes()], GOVERNANCE_PROGRAM_ID);
+}
+
+/**
+ * Grounds for a listing (OFS-7100 §12). Variant order must match
+ * `governance::state::BanReason`, since Borsh's enum tag is the
+ * declaration index.
+ */
+export enum BanReason {
+  StolenFunds = 0,
+  Sanctions = 1,
+  Phishing = 2,
+  Scam = 3,
+  Other = 4,
+}

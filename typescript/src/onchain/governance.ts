@@ -1,8 +1,8 @@
 import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 
 import { boolByte, borshString, enumTag, fixedBytes, i64LE, instructionData, meta, u16LE, u64LE } from "./codec.js";
-import { GOVERNANCE_PROGRAM_ID, RENT_SYSVAR_ID, TOKEN_2022_PROGRAM_ID } from "./constants.js";
-import type { ProposalCategory, Role } from "./constants.js";
+import { banRecordPda, GOVERNANCE_PROGRAM_ID, RENT_SYSVAR_ID, TOKEN_2022_PROGRAM_ID } from "./constants.js";
+import type { BanReason, ProposalCategory, Role } from "./constants.js";
 import { stakeAccountPda, stakingConfigPda } from "./staking.js";
 
 /**
@@ -23,6 +23,8 @@ const DISCRIMINATORS = {
   refundOrForfeitDeposit: Uint8Array.from([85, 63, 214, 158, 230, 140, 62, 248]),
   updateConfigParameter: Uint8Array.from([126, 60, 74, 140, 2, 137, 230, 61]),
   authorizeTreasurySpend: Uint8Array.from([248, 111, 88, 252, 136, 223, 53, 172]),
+  listWallet: Uint8Array.from([176, 149, 148, 11, 126, 182, 162, 248]),
+  delistWallet: Uint8Array.from([40, 136, 186, 228, 254, 114, 109, 134]),
 } as const;
 
 function proposalIdSeed(id: bigint): Uint8Array {
@@ -165,6 +167,7 @@ export function createProposalIx(
     programId: GOVERNANCE_PROGRAM_ID,
     keys: [
       meta(proposer, true, true),
+      meta(banRecordPda(proposer)[0], false, false),
       meta(mint, false, false),
       meta(governanceConfig, false, false),
       meta(depositVault, false, true),
@@ -287,5 +290,77 @@ export function authorizeTreasurySpendIx(
     programId: GOVERNANCE_PROGRAM_ID,
     keys: [meta(proposal, false, true)],
     data: instructionData(DISCRIMINATORS.authorizeTreasurySpend, destination.toBytes(), u64LE(amount)),
+  });
+}
+
+/**
+ * Adds a wallet to the protocol-wide ban list (OFS-7100 §12).
+ *
+ * One instruction closes deposit access across `escrow`, `staking`,
+ * `presale` and `governance` at once — those programs read the record
+ * this creates, they are not separately notified, and no application
+ * can opt out.
+ *
+ * The authority is `GovernanceConfig.admin`: a single key, checked
+ * directly. It is **not** a governance vote, despite §12.2 requiring
+ * one — `governance`'s proposal-execution instructions only record an
+ * authorization (`Proposal.executed = true`) and cannot mutate state,
+ * so no working vote-gated path exists to build on yet. Do not present
+ * this to users as governance-controlled. See
+ * `governance::instructions::list_wallet`'s doc comment for what
+ * closing that gap requires.
+ *
+ * `evidenceHash` pins the off-chain evidence the listing rests on. §12.2
+ * separates publishing evidence (a risk intelligence provider) from
+ * deciding exclusion (governance); this is where the former is
+ * committed to so a listing can be contested against a fixed artefact.
+ */
+export function listWalletIx(
+  admin: PublicKey,
+  wallet: PublicKey,
+  reason: BanReason,
+  evidenceHash: Uint8Array,
+): TransactionInstruction {
+  const [governanceConfig] = governanceConfigPda();
+  const [banRecord] = banRecordPda(wallet);
+  return new TransactionInstruction({
+    programId: GOVERNANCE_PROGRAM_ID,
+    keys: [
+      meta(admin, true, true),
+      meta(governanceConfig, false, false),
+      meta(banRecord, false, true),
+      meta(SystemProgram.programId, false, false),
+    ],
+    data: instructionData(
+      DISCRIMINATORS.listWallet,
+      wallet.toBytes(),
+      enumTag(reason),
+      fixedBytes(evidenceHash, 32),
+    ),
+  });
+}
+
+/**
+ * Removes a wallet from the ban list, restoring deposit access
+ * protocol-wide (OFS-7100 §12.2).
+ *
+ * Mandatory rather than optional: once rejection is protocol-wide, an
+ * erroneous listing costs a wallet all protocol access, so the reversal
+ * path has to be as available as the exclusion path. Same authority as
+ * `listWalletIx`, deliberately — an authority that could exclude but
+ * not readmit is the failure §12.2 names. Rent returns to `admin`, who
+ * paid it at listing.
+ */
+export function delistWalletIx(admin: PublicKey, wallet: PublicKey): TransactionInstruction {
+  const [governanceConfig] = governanceConfigPda();
+  const [banRecord] = banRecordPda(wallet);
+  return new TransactionInstruction({
+    programId: GOVERNANCE_PROGRAM_ID,
+    keys: [
+      meta(admin, true, true),
+      meta(governanceConfig, false, false),
+      meta(banRecord, false, true),
+    ],
+    data: instructionData(DISCRIMINATORS.delistWallet, wallet.toBytes()),
   });
 }

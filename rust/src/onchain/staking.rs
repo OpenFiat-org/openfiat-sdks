@@ -181,6 +181,7 @@ pub fn stake_ix(
         &data,
         vec![
             AccountMeta::new_readonly(*owner, true),
+            AccountMeta::new_readonly(super::ban_record_pda(owner).0, false),
             AccountMeta::new_readonly(staking_config, false),
             AccountMeta::new(stake_account, false),
             AccountMeta::new(stake_vault, false),
@@ -439,17 +440,43 @@ mod tests {
 
     #[test]
     fn stake_account_accounts_match_the_idl_signer_and_writable_flags() {
+        let owner = Pubkey::new_unique();
         let ix = stake_ix(
-            &Pubkey::new_unique(),
+            &owner,
             Role::Merchant,
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
             1,
         );
-        assert_eq!(ix.accounts.len(), 7);
+        assert_eq!(ix.accounts.len(), 8);
         assert!(ix.accounts[0].is_signer && !ix.accounts[0].is_writable); // owner
-        assert!(!ix.accounts[1].is_signer && !ix.accounts[1].is_writable); // staking_config
-        assert!(ix.accounts[2].is_writable); // stake_account
-        assert!(ix.accounts[3].is_writable); // stake_vault
+        // OFS-7100 §12's ban gate. Read-only and never written by this
+        // program: `staking` only observes whether `governance` has
+        // occupied the address. It must be the *owner's* canonical ban
+        // address — the program re-derives it and rejects anything else,
+        // so a builder that passed some other empty account here would
+        // produce instructions that always fail, not instructions that
+        // quietly skip the ban.
+        assert_eq!(
+            ix.accounts[1].pubkey,
+            super::super::ban_record_pda(&owner).0
+        );
+        assert!(!ix.accounts[1].is_signer && !ix.accounts[1].is_writable);
+        assert!(!ix.accounts[2].is_signer && !ix.accounts[2].is_writable); // staking_config
+        assert!(ix.accounts[3].is_writable); // stake_account
+        assert!(ix.accounts[4].is_writable); // stake_vault
+    }
+
+    #[test]
+    fn request_unstake_carries_no_ban_gate() {
+        // Deliberate asymmetry: §12 excludes banned wallets from
+        // *depositing*, not from recovering what they already deposited.
+        // Gating the withdrawal path would be confiscation rather than
+        // exclusion, so this instruction must stay reachable by a banned
+        // wallet — an accidental gate here would be a silent seizure.
+        let owner = Pubkey::new_unique();
+        let ix = request_unstake_ix(&owner, Role::Merchant, 50);
+        let ban = super::super::ban_record_pda(&owner).0;
+        assert!(ix.accounts.iter().all(|a| a.pubkey != ban));
     }
 }

@@ -246,6 +246,7 @@ pub fn deposit_liquidity_ix(
         &data,
         vec![
             AccountMeta::new_readonly(*merchant, true),
+            AccountMeta::new_readonly(super::ban_record_pda(merchant).0, false),
             AccountMeta::new(liquidity_vault, false),
             AccountMeta::new(token_vault, false),
             AccountMeta::new(*from, false),

@@ -29,7 +29,14 @@ import {
   tradeEscrowTokensPda,
   withdrawLiquidityIx,
 } from "../src/onchain/escrow.js";
-import { DisputeOutcome, ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, Role, TOKEN_2022_PROGRAM_ID } from "../src/onchain/constants.js";
+import {
+  banRecordPda,
+  DisputeOutcome,
+  ESCROW_PROGRAM_ID,
+  RENT_SYSVAR_ID,
+  Role,
+  TOKEN_2022_PROGRAM_ID,
+} from "../src/onchain/constants.js";
 import { stakeAccountPda, stakingConfigPda } from "../src/onchain/staking.js";
 import { expectAccounts, expectDiscriminator, fakePubkey } from "./onchain-helpers.js";
 
@@ -106,6 +113,9 @@ describe("escrow instructions", () => {
     const [tokenVault] = liquidityVaultTokensPda(merchant, mint);
     expectAccounts(ix, [
       { pubkey: merchant, isSigner: true, isWritable: false },
+      // OFS-7100 §12: a deposit into a vault carries the depositor's own
+      // ban address, which the program requires to be unoccupied.
+      { pubkey: banRecordPda(merchant)[0], isSigner: false, isWritable: false },
       { pubkey: liquidityVault, isSigner: false, isWritable: true },
       { pubkey: tokenVault, isSigner: false, isWritable: true },
       { pubkey: from, isSigner: false, isWritable: true },
