@@ -1,7 +1,7 @@
 import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 
 import { enumTag, i64LE, instructionData, meta, u16LE, u64LE } from "./codec.js";
-import { RENT_SYSVAR_ID, STAKING_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "./constants.js";
+import { RENT_SYSVAR_ID, ROLE_COUNT, STAKING_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "./constants.js";
 import type { Role } from "./constants.js";
 
 /**
@@ -46,13 +46,25 @@ export function stakeAccountPda(owner: PublicKey, role: Role): [PublicKey, numbe
 
 /** Mirrors `staking::instructions::initialize_staking_config::InitializeStakingConfigParams`'s field order exactly. */
 export interface InitializeStakingConfigParams {
-  minStake: bigint;
-  minStakeArbitrator: bigint;
+  /** Indexed by `Role`; must have exactly ROLE_COUNT entries. */
+  minStakeByRole: bigint[];
   unbondingPeriodSecs: bigint;
   slashBps: number;
   slashingAuthority: PublicKey;
   slashDestination: PublicKey;
   rewardsAuthority: PublicKey;
+}
+
+/** Borsh encodes a fixed-size array as its elements back to back, with no
+ *  length prefix — so a wrong-length array here would silently shift every
+ *  field after it rather than failing. */
+function minStakeByRoleBytes(minStakeByRole: bigint[]): Uint8Array[] {
+  if (minStakeByRole.length !== ROLE_COUNT) {
+    throw new Error(
+      `minStakeByRole must have exactly ${ROLE_COUNT} entries, got ${minStakeByRole.length}`,
+    );
+  }
+  return minStakeByRole.map(u64LE);
 }
 
 export function initializeStakingConfigIx(
@@ -77,8 +89,7 @@ export function initializeStakingConfigIx(
     ],
     data: instructionData(
       DISCRIMINATORS.initializeStakingConfig,
-      u64LE(params.minStake),
-      u64LE(params.minStakeArbitrator),
+      ...minStakeByRoleBytes(params.minStakeByRole),
       i64LE(params.unbondingPeriodSecs),
       u16LE(params.slashBps),
       params.slashingAuthority.toBytes(),

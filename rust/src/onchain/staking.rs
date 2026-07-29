@@ -6,7 +6,9 @@
 //! exactly: `StakingConfig`, `stake_vault`, and `rewards_vault` are
 //! singletons; a `StakeAccount` is keyed by `(owner, role)`.
 
-use super::{Role, STAKING_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, instruction_data, system_program_id};
+use super::{
+    ROLE_COUNT, Role, STAKING_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, instruction_data, system_program_id,
+};
 use borsh::BorshSerialize;
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
@@ -44,8 +46,7 @@ pub fn stake_account_pda(owner: &Pubkey, role: Role) -> (Pubkey, u8) {
 
 #[derive(BorshSerialize)]
 struct InitializeStakingConfigParams {
-    min_stake: u64,
-    min_stake_arbitrator: u64,
+    min_stake_by_role: [u64; ROLE_COUNT],
     unbonding_period_secs: i64,
     slash_bps: u16,
     slashing_authority: Pubkey,
@@ -58,8 +59,7 @@ struct InitializeStakingConfigParams {
 pub fn initialize_staking_config_ix(
     admin: &Pubkey,
     mint: &Pubkey,
-    min_stake: u64,
-    min_stake_arbitrator: u64,
+    min_stake_by_role: [u64; ROLE_COUNT],
     unbonding_period_secs: i64,
     slash_bps: u16,
     slashing_authority: &Pubkey,
@@ -72,8 +72,7 @@ pub fn initialize_staking_config_ix(
     let data = instruction_data(
         [78, 164, 6, 115, 206, 48, 168, 105],
         InitializeStakingConfigParams {
-            min_stake,
-            min_stake_arbitrator,
+            min_stake_by_role,
             unbonding_period_secs,
             slash_bps,
             slashing_authority: *slashing_authority,
@@ -289,8 +288,7 @@ mod tests {
                 initialize_staking_config_ix(
                     &admin,
                     &mint,
-                    1_000,
-                    5_000,
+                    [1_000, 5_000, 1_000, 5_000, 1_000, 1_000, 1_000],
                     604_800,
                     500,
                     &Pubkey::new_unique(),

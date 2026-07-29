@@ -42,6 +42,10 @@ export enum ProposalCategory {
 }
 
 /** A dispute case's resolution outcome (OFS-2400 §17, OFS-4200 §2). */
+/** Number of `Role` variants — the length of `StakingConfig`'s per-role
+ *  minimum-stake array. Must match `Role::COUNT` in `programs/shared`. */
+export const ROLE_COUNT = 7;
+
 export enum DisputeOutcome {
   BuyerWins = 0,
   MerchantWins = 1,

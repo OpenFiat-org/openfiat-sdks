@@ -34,8 +34,8 @@ fn main() {
     let init_staking = staking::initialize_staking_config_ix(
         &admin.pubkey(),
         &mint,
-        1_000_000,     // min_stake
-        5_000_000,     // min_stake_arbitrator
+        // min_stake_by_role, indexed by Role
+        [1_000_000, 5_000_000, 1_000_000, 5_000_000, 1_000_000, 1_000_000, 1_000_000],
         7 * 24 * 3600, // unbonding_period_secs
         500,           // slash_bps (5%)
         &admin.pubkey(),

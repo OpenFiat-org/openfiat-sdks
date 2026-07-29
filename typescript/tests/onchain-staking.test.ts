@@ -48,8 +48,7 @@ describe("staking instructions", () => {
   it("initializeStakingConfigIx", () => {
     const admin = fakePubkey(10);
     const ix = initializeStakingConfigIx(admin, mint, {
-      minStake: 1_000n,
-      minStakeArbitrator: 5_000n,
+      minStakeByRole: [1_000n, 5_000n, 1_000n, 5_000n, 1_000n, 1_000n, 1_000n],
       unbondingPeriodSecs: 604_800n,
       slashBps: 500,
       slashingAuthority: fakePubkey(11),

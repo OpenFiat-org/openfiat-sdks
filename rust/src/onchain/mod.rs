@@ -65,6 +65,10 @@ pub enum Role {
     SnapshotProvider,
 }
 
+/// Number of [`Role`] variants — the length of `StakingConfig`'s per-role
+/// minimum-stake array. Must match `Role::COUNT` in `programs/shared`.
+pub const ROLE_COUNT: usize = 7;
+
 /// OFS-4100 §5's 6-category governance taxonomy (OFS-4200 §2).
 #[derive(BorshSerialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProposalCategory {

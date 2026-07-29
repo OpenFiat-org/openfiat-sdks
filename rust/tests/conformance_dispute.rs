@@ -140,11 +140,12 @@ async fn a_disputed_trade_reaches_a_stake_weighted_onchain_outcome_and_the_offch
     // dedicated test mint with arbitrary supply, not the real OFS-4100
     // figure. ---
     let min_stake_arbitrator = 100 * DECIMALS;
+    let mut min_stake_by_role = [10 * DECIMALS; openfiat_sdk::onchain::ROLE_COUNT];
+    min_stake_by_role[openfiat_sdk::onchain::Role::Arbitrator as usize] = min_stake_arbitrator;
     let staking_config_ix = initialize_staking_config_ix(
         &admin.pubkey(),
         &mint.pubkey(),
-        10 * DECIMALS,
-        min_stake_arbitrator,
+        min_stake_by_role,
         604_800,
         1000,
         &admin.pubkey(),
