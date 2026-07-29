@@ -147,7 +147,7 @@ async fn a_trade_completes_end_to_end_with_a_real_on_chain_escrow_release() {
         &admin.pubkey(),
         0,
         0,
-        15, // 0.15% settlement fee — FeeConfig's own documented default
+        85, // 0.85% settlement fee — FeeConfig's documented default, borne by the buyer
         &dev_treasury.pubkey(),
         &ecosystem_treasury.pubkey(),
         &infra_treasury.pubkey(),
