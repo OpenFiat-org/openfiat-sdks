@@ -31,7 +31,8 @@ fn peer_id(keypair: &Keypair) -> PeerId {
 }
 
 async fn spawn_node() -> String {
-    let rpc_handle = openfiat_rpc::spawn_actor(MemoryStore::new);
+    let rpc_handle =
+        openfiat_rpc::spawn_actor(MemoryStore::new, openfiat_rpc::NetworkConfig::for_test());
     let metrics = Arc::new(openfiat_metrics::MetricsRegistry::new());
     let router = openfiat_rpc::router(rpc_handle, metrics).merge(openfiat_api::router());
 
