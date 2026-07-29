@@ -7,6 +7,7 @@ import {
   createProposalIx,
   depositVaultPda,
   governanceConfigPda,
+  updateGovernanceConfigIx,
   initializeGovernanceConfigIx,
   proposalPda,
   refundOrForfeitDepositIx,
@@ -187,6 +188,45 @@ describe("governance instructions", () => {
     const key = ix.data.subarray(44, 44 + keyLen).toString("utf8");
     expect(key).toBe("settlement_fee_bps");
     expect(ix.data.readBigUInt64LE(44 + keyLen)).toBe(25n);
+  });
+
+  it("updateGovernanceConfigIx takes the destination as an account, not a param", () => {
+    const admin = fakePubkey(70);
+    const mint = fakePubkey(71);
+    const forfeitDestination = fakePubkey(72);
+    const ix = updateGovernanceConfigIx(admin, mint, forfeitDestination, {
+      totalOpenSupply: 1_000_000_000n,
+      quorumBps: 1000,
+      thresholdSimpleBps: 5001,
+      thresholdTreasuryBps: 6000,
+      thresholdUpgradeBps: 6600,
+      quorumUpgradeBps: 2000,
+      depositAmount: 5_000n,
+      voteLockSecs: 604_800n,
+    });
+    expectDiscriminator(ix, [140, 45, 181, 17, 77, 67, 157, 248]);
+    const [governanceConfig] = governanceConfigPda();
+    expectAccounts(ix, [
+      { pubkey: admin, isSigner: true, isWritable: false },
+      { pubkey: governanceConfig, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: forfeitDestination, isSigner: false, isWritable: false },
+    ]);
+
+    // Every field pinned at its offset. The params struct is eight numbers
+    // in a row with no length prefixes, so dropping or reordering one
+    // encodes cleanly and silently shifts the rest — which is exactly the
+    // mistake this test caught while being written.
+    let o = 8;
+    expect(ix.data.readBigUInt64LE(o)).toBe(1_000_000_000n); o += 8;
+    expect(ix.data.readUInt16LE(o)).toBe(1000); o += 2;
+    expect(ix.data.readUInt16LE(o)).toBe(5001); o += 2;
+    expect(ix.data.readUInt16LE(o)).toBe(6000); o += 2;
+    expect(ix.data.readUInt16LE(o)).toBe(6600); o += 2;
+    expect(ix.data.readUInt16LE(o)).toBe(2000); o += 2;
+    expect(ix.data.readBigUInt64LE(o)).toBe(5_000n); o += 8;
+    expect(ix.data.readBigInt64LE(o)).toBe(604_800n); o += 8;
+    expect(ix.data.length).toBe(o);
   });
 
   it("authorizeTreasurySpendIx", () => {

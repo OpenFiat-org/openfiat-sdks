@@ -104,6 +104,66 @@ pub fn initialize_governance_config_ix(
     )
 }
 
+#[derive(BorshSerialize)]
+struct UpdateGovernanceConfigParams {
+    total_open_supply: u64,
+    quorum_bps: u16,
+    threshold_simple_bps: u16,
+    threshold_treasury_bps: u16,
+    threshold_upgrade_bps: u16,
+    quorum_upgrade_bps: u16,
+    deposit_amount: u64,
+    vote_lock_secs: i64,
+}
+
+/// Corrects the singleton config (admin-only).
+///
+/// `forfeit_destination` is an *account* here, not a param as it is on
+/// `initialize_governance_config_ix` — the program takes it that way so a
+/// wallet address cannot be stored where a token account is required. The
+/// deployed config held exactly that mistake, which left
+/// `refund_or_forfeit_deposit` unable to load its accounts at all. The
+/// mint must equal the one recorded on the config.
+#[allow(clippy::too_many_arguments)]
+pub fn update_governance_config_ix(
+    admin: &Pubkey,
+    mint: &Pubkey,
+    forfeit_destination: &Pubkey,
+    total_open_supply: u64,
+    quorum_bps: u16,
+    threshold_simple_bps: u16,
+    threshold_treasury_bps: u16,
+    threshold_upgrade_bps: u16,
+    quorum_upgrade_bps: u16,
+    deposit_amount: u64,
+    vote_lock_secs: i64,
+) -> Instruction {
+    let (governance_config, _) = governance_config_pda();
+    let data = instruction_data(
+        [140, 45, 181, 17, 77, 67, 157, 248],
+        UpdateGovernanceConfigParams {
+            total_open_supply,
+            quorum_bps,
+            threshold_simple_bps,
+            threshold_treasury_bps,
+            threshold_upgrade_bps,
+            quorum_upgrade_bps,
+            deposit_amount,
+            vote_lock_secs,
+        },
+    );
+    Instruction::new_with_bytes(
+        GOVERNANCE_PROGRAM_ID,
+        &data,
+        vec![
+            AccountMeta::new_readonly(*admin, true),
+            AccountMeta::new(governance_config, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new_readonly(*forfeit_destination, false),
+        ],
+    )
+}
+
 /// `from` is the proposer's own token account funding the stake deposit
 /// (`GovernanceConfig.deposit_amount`, refunded or forfeited once
 /// `tally_and_finalize` runs).
@@ -250,6 +310,41 @@ pub fn authorize_treasury_spend_ix(id: u64, destination: Pubkey, amount: u64) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn update_governance_config_takes_the_destination_as_an_account() {
+        let admin = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let forfeit_destination = Pubkey::new_unique();
+        let ix = update_governance_config_ix(
+            &admin,
+            &mint,
+            &forfeit_destination,
+            1_000_000_000,
+            1_000,
+            5_001,
+            6_000,
+            6_600,
+            2_000,
+            5_000,
+            604_800,
+        );
+        assert_eq!(ix.program_id, GOVERNANCE_PROGRAM_ID);
+        assert_eq!(&ix.data[..8], &[140, 45, 181, 17, 77, 67, 157, 248]);
+
+        let (governance_config, _) = governance_config_pda();
+        let expected = [admin, governance_config, mint, forfeit_destination];
+        let actual: Vec<Pubkey> = ix.accounts.iter().map(|a| a.pubkey).collect();
+        assert_eq!(actual, expected);
+        // Only the admin signs; the destination rides along as a plain
+        // account so the program can type-check it.
+        assert!(ix.accounts[0].is_signer);
+        assert!(!ix.accounts[3].is_signer);
+        assert!(!ix.accounts[3].is_writable);
+
+        // 8 discriminator + u64 + 5×u16 + u64 + i64.
+        assert_eq!(ix.data.len(), 8 + 8 + 10 + 8 + 8);
+    }
 
     #[test]
     fn proposal_pda_uses_the_documented_seeds() {

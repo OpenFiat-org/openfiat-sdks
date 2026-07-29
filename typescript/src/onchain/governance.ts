@@ -16,6 +16,7 @@ const VOTE_RECORD_SEED = Buffer.from("vote");
 
 const DISCRIMINATORS = {
   initializeGovernanceConfig: Uint8Array.from([15, 40, 42, 141, 94, 104, 27, 201]),
+  updateGovernanceConfig: Uint8Array.from([140, 45, 181, 17, 77, 67, 157, 248]),
   createProposal: Uint8Array.from([132, 116, 68, 174, 216, 160, 198, 22]),
   castVote: Uint8Array.from([20, 212, 15, 189, 69, 180, 69, 151]),
   tallyAndFinalize: Uint8Array.from([21, 190, 147, 204, 51, 17, 163, 150]),
@@ -89,6 +90,59 @@ export function initializeGovernanceConfigIx(
       u16LE(params.quorumUpgradeBps),
       u64LE(params.depositAmount),
       params.forfeitDestination.toBytes(),
+      i64LE(params.voteLockSecs),
+    ),
+  });
+}
+
+/** The numeric half of the config. `forfeitDestination` is absent: the
+ *  program takes it as an account so a wallet cannot be stored where a
+ *  token account is required. */
+export interface UpdateGovernanceConfigParams {
+  totalOpenSupply: bigint;
+  quorumBps: number;
+  thresholdSimpleBps: number;
+  thresholdTreasuryBps: number;
+  thresholdUpgradeBps: number;
+  quorumUpgradeBps: number;
+  depositAmount: bigint;
+  voteLockSecs: bigint;
+}
+
+/**
+ * Corrects the singleton config (admin-only).
+ *
+ * `forfeitDestination` is an account rather than a param, unlike
+ * `initializeGovernanceConfigIx`. The deployed config was initialized
+ * with a treasury owner wallet there, which left
+ * `refund_or_forfeit_deposit` unable to load its accounts at all —
+ * refunds included, not just forfeits. `mint` must equal the one
+ * recorded on the config.
+ */
+export function updateGovernanceConfigIx(
+  admin: PublicKey,
+  mint: PublicKey,
+  forfeitDestination: PublicKey,
+  params: UpdateGovernanceConfigParams,
+): TransactionInstruction {
+  const [governanceConfig] = governanceConfigPda();
+  return new TransactionInstruction({
+    programId: GOVERNANCE_PROGRAM_ID,
+    keys: [
+      meta(admin, true, false),
+      meta(governanceConfig, false, true),
+      meta(mint, false, false),
+      meta(forfeitDestination, false, false),
+    ],
+    data: instructionData(
+      DISCRIMINATORS.updateGovernanceConfig,
+      u64LE(params.totalOpenSupply),
+      u16LE(params.quorumBps),
+      u16LE(params.thresholdSimpleBps),
+      u16LE(params.thresholdTreasuryBps),
+      u16LE(params.thresholdUpgradeBps),
+      u16LE(params.quorumUpgradeBps),
+      u64LE(params.depositAmount),
       i64LE(params.voteLockSecs),
     ),
   });
