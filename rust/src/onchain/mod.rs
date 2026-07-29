@@ -80,6 +80,39 @@ pub enum ProposalCategory {
     Constitutional,
 }
 
+/// PDA seed for a `governance::BanRecord` (OFS-7100 §12).
+///
+/// Lives in this module rather than in `governance` for the same reason
+/// its on-chain counterpart lives in `programs/shared`: the gate is
+/// enforced from escrow and staking too, and those modules should not
+/// have to reach into `governance` for it.
+pub const BAN_SEED: &[u8] = b"ban";
+
+/// The canonical ban address for a wallet — `[BAN_SEED, wallet]` under
+/// `openfiat-governance`.
+///
+/// Every gated instruction re-derives this on-chain from its own
+/// signer's key and rejects anything else, so passing a different
+/// account fails with Anchor's `ConstraintSeeds` rather than slipping
+/// past the ban. The wallet is banned iff this address is occupied; for
+/// an unbanned wallet it names an account that does not exist, which is
+/// exactly what the program expects.
+pub fn ban_record_pda(wallet: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[BAN_SEED, wallet.as_ref()], &GOVERNANCE_PROGRAM_ID)
+}
+
+/// Grounds for a listing (OFS-7100 §12). Variant order must match
+/// `governance::state::BanReason` — Borsh's enum tag is the declaration
+/// index, so a reordered copy would silently record the wrong reason.
+#[derive(BorshSerialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BanReason {
+    StolenFunds,
+    Sanctions,
+    Phishing,
+    Scam,
+    Other,
+}
+
 /// A dispute case's resolution outcome (OFS-2400 §17, OFS-4200 §2).
 #[derive(BorshSerialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DisputeOutcome {

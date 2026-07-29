@@ -1,7 +1,7 @@
 import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 
 import { enumTag, i64LE, instructionData, meta, u16LE, u64LE } from "./codec.js";
-import { RENT_SYSVAR_ID, ROLE_COUNT, STAKING_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "./constants.js";
+import { banRecordPda, RENT_SYSVAR_ID, ROLE_COUNT, STAKING_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "./constants.js";
 import type { Role } from "./constants.js";
 
 /**
@@ -171,6 +171,7 @@ export function stakeIx(
     programId: STAKING_PROGRAM_ID,
     keys: [
       meta(owner, true, false),
+      meta(banRecordPda(owner)[0], false, false),
       meta(stakingConfig, false, false),
       meta(stakeAccount, false, true),
       meta(stakeVault, false, true),
@@ -309,6 +310,7 @@ export function fundRewardsVaultIx(
     programId: STAKING_PROGRAM_ID,
     keys: [
       meta(funder, true, false),
+      meta(banRecordPda(funder)[0], false, false),
       meta(mint, false, false),
       meta(stakingConfig, false, false),
       meta(rewardsVault, false, true),

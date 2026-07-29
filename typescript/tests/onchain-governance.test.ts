@@ -5,8 +5,10 @@ import {
   authorizeTreasurySpendIx,
   castVoteIx,
   createProposalIx,
+  delistWalletIx,
   depositVaultPda,
   governanceConfigPda,
+  listWalletIx,
   updateGovernanceConfigIx,
   initializeGovernanceConfigIx,
   proposalPda,
@@ -17,6 +19,8 @@ import {
 } from "../src/onchain/governance.js";
 import { stakeAccountPda, stakingConfigPda } from "../src/onchain/staking.js";
 import {
+  banRecordPda,
+  BanReason,
   GOVERNANCE_PROGRAM_ID,
   ProposalCategory,
   RENT_SYSVAR_ID,
@@ -109,6 +113,7 @@ describe("governance instructions", () => {
     const [proposal] = proposalPda(proposalId);
     expectAccounts(ix, [
       { pubkey: proposer, isSigner: true, isWritable: true },
+      { pubkey: banRecordPda(proposer)[0], isSigner: false, isWritable: false },
       { pubkey: mint, isSigner: false, isWritable: false },
       { pubkey: governanceConfig, isSigner: false, isWritable: false },
       { pubkey: depositVault, isSigner: false, isWritable: true },
@@ -237,5 +242,54 @@ describe("governance instructions", () => {
     expectAccounts(ix, [{ pubkey: proposal, isSigner: false, isWritable: true }]);
     expect(Array.from(ix.data.subarray(8, 40))).toEqual(Array.from(destination.toBytes()));
     expect(ix.data.readBigUInt64LE(40)).toBe(5_000n);
+  });
+});
+
+describe("ban list (OFS-7100 §12)", () => {
+  const admin = fakePubkey(80);
+  const wallet = fakePubkey(81);
+
+  it("banRecordPda is [\"ban\", wallet] under the governance program", () => {
+    // The enforcing programs in escrow/staking/presale re-derive exactly
+    // this on-chain from their own signer's key, so a client that got
+    // the seed or the owning program wrong would build instructions that
+    // fail with ConstraintSeeds rather than silently bypass the ban.
+    const [pda] = banRecordPda(wallet);
+    const [expected] = PublicKey.findProgramAddressSync(
+      [Buffer.from("ban"), wallet.toBytes()],
+      GOVERNANCE_PROGRAM_ID,
+    );
+    expect(pda.equals(expected)).toBe(true);
+  });
+
+  it("listWalletIx", () => {
+    const evidenceHash = new Uint8Array(32).fill(9);
+    const ix = listWalletIx(admin, wallet, BanReason.Sanctions, evidenceHash);
+    expectDiscriminator(ix, [176, 149, 148, 11, 126, 182, 162, 248]);
+    expectAccounts(ix, [
+      { pubkey: admin, isSigner: true, isWritable: true },
+      { pubkey: governanceConfigPda()[0], isSigner: false, isWritable: false },
+      { pubkey: banRecordPda(wallet)[0], isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ]);
+    expect(Array.from(ix.data.subarray(8, 40))).toEqual(Array.from(wallet.toBytes()));
+    expect(ix.data[40]).toBe(BanReason.Sanctions);
+    expect(Array.from(ix.data.subarray(41, 73))).toEqual(Array.from(evidenceHash));
+  });
+
+  it("delistWalletIx targets the same address listWalletIx created", () => {
+    // §12.2 requires delisting to be possible at all; the two builders
+    // agreeing on the address is what makes it possible in practice.
+    const ix = delistWalletIx(admin, wallet);
+    expectDiscriminator(ix, [40, 136, 186, 228, 254, 114, 109, 134]);
+    expectAccounts(ix, [
+      { pubkey: admin, isSigner: true, isWritable: true },
+      { pubkey: governanceConfigPda()[0], isSigner: false, isWritable: false },
+      { pubkey: banRecordPda(wallet)[0], isSigner: false, isWritable: true },
+    ]);
+    expect(Array.from(ix.data.subarray(8, 40))).toEqual(Array.from(wallet.toBytes()));
+
+    const listed = listWalletIx(admin, wallet, BanReason.Scam, new Uint8Array(32));
+    expect(ix.keys[2]?.pubkey.equals(listed.keys[2]!.pubkey)).toBe(true);
   });
 });

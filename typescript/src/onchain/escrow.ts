@@ -1,7 +1,7 @@
 import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 
 import { enumTag, fixedBytes, i64LE, instructionData, meta, u16LE, u64LE } from "./codec.js";
-import { ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, Role, TOKEN_2022_PROGRAM_ID } from "./constants.js";
+import { banRecordPda, ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, Role, TOKEN_2022_PROGRAM_ID } from "./constants.js";
 import type { DisputeOutcome } from "./constants.js";
 import { stakeAccountPda, stakingConfigPda } from "./staking.js";
 
@@ -224,6 +224,7 @@ export function depositLiquidityIx(
     programId: ESCROW_PROGRAM_ID,
     keys: [
       meta(merchant, true, false),
+      meta(banRecordPda(merchant)[0], false, false),
       meta(liquidityVault, false, true),
       meta(tokenVault, false, true),
       meta(from, false, true),

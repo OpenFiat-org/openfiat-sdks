@@ -8,8 +8,8 @@
 //! its existence is itself the double-vote guard.
 
 use super::{
-    GOVERNANCE_PROGRAM_ID, ProposalCategory, Role, TOKEN_2022_PROGRAM_ID, instruction_data,
-    system_program_id,
+    BanReason, GOVERNANCE_PROGRAM_ID, ProposalCategory, Role, TOKEN_2022_PROGRAM_ID,
+    instruction_data, system_program_id,
 };
 use crate::onchain::staking;
 use borsh::BorshSerialize;
@@ -190,6 +190,7 @@ pub fn create_proposal_ix(
         &data,
         vec![
             AccountMeta::new(*proposer, true),
+            AccountMeta::new_readonly(super::ban_record_pda(proposer).0, false),
             AccountMeta::new_readonly(*mint, false),
             AccountMeta::new_readonly(governance_config, false),
             AccountMeta::new(deposit_vault, false),
@@ -307,6 +308,74 @@ pub fn authorize_treasury_spend_ix(id: u64, destination: Pubkey, amount: u64) ->
     )
 }
 
+/// Adds a wallet to the protocol-wide ban list (OFS-7100 §12).
+///
+/// One instruction closes deposit access across `escrow`, `staking`,
+/// `presale` and `governance` at once — those programs read the record
+/// this creates rather than being separately notified, and no
+/// application can opt out.
+///
+/// The authority is `GovernanceConfig.admin`: a single key, checked
+/// directly. It is **not** a governance vote, despite §12.2 requiring
+/// one. `governance`'s proposal-execution instructions only record an
+/// authorization (`Proposal.executed = true`) and cannot mutate state,
+/// so there is no working vote-gated path to build on yet. Do not
+/// describe this as governance-controlled in any interface. See
+/// `governance::instructions::list_wallet`'s doc comment for what
+/// closing that gap requires.
+///
+/// `evidence_hash` pins the off-chain evidence the listing rests on:
+/// §12.2 separates publishing evidence (a risk intelligence provider)
+/// from deciding exclusion (governance), and this is where the former is
+/// committed to so a listing can be contested against a fixed artefact.
+pub fn list_wallet_ix(
+    admin: &Pubkey,
+    wallet: &Pubkey,
+    reason: BanReason,
+    evidence_hash: [u8; 32],
+) -> Instruction {
+    let (governance_config, _) = governance_config_pda();
+    let (ban_record, _) = super::ban_record_pda(wallet);
+    let data = instruction_data(
+        [176, 149, 148, 11, 126, 182, 162, 248],
+        (wallet.to_bytes(), reason, evidence_hash),
+    );
+    Instruction::new_with_bytes(
+        GOVERNANCE_PROGRAM_ID,
+        &data,
+        vec![
+            AccountMeta::new(*admin, true),
+            AccountMeta::new_readonly(governance_config, false),
+            AccountMeta::new(ban_record, false),
+            AccountMeta::new_readonly(system_program_id(), false),
+        ],
+    )
+}
+
+/// Removes a wallet from the ban list, restoring deposit access
+/// protocol-wide (OFS-7100 §12.2).
+///
+/// Mandatory rather than optional: once rejection is protocol-wide an
+/// erroneous listing costs a wallet all protocol access, so the reversal
+/// path has to be as available as the exclusion path. Same authority as
+/// [`list_wallet_ix`], deliberately — an authority that could exclude
+/// but not readmit is the failure §12.2 names. Rent returns to `admin`,
+/// who paid it at listing.
+pub fn delist_wallet_ix(admin: &Pubkey, wallet: &Pubkey) -> Instruction {
+    let (governance_config, _) = governance_config_pda();
+    let (ban_record, _) = super::ban_record_pda(wallet);
+    let data = instruction_data([40, 136, 186, 228, 254, 114, 109, 134], wallet.to_bytes());
+    Instruction::new_with_bytes(
+        GOVERNANCE_PROGRAM_ID,
+        &data,
+        vec![
+            AccountMeta::new(*admin, true),
+            AccountMeta::new_readonly(governance_config, false),
+            AccountMeta::new(ban_record, false),
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -417,6 +486,14 @@ mod tests {
                 [20, 212, 15, 189, 69, 180, 69, 151],
             ),
             (
+                list_wallet_ix(&admin, &voter, BanReason::Sanctions, [0u8; 32]),
+                [176, 149, 148, 11, 126, 182, 162, 248],
+            ),
+            (
+                delist_wallet_ix(&admin, &voter),
+                [40, 136, 186, 228, 254, 114, 109, 134],
+            ),
+            (
                 tally_and_finalize_ix(1),
                 [21, 190, 147, 204, 51, 17, 163, 150],
             ),
@@ -457,5 +534,85 @@ mod tests {
     #[test]
     fn tally_and_finalize_takes_only_the_proposal_account() {
         assert_eq!(tally_and_finalize_ix(5).accounts.len(), 1);
+    }
+
+    #[test]
+    fn ban_record_pda_uses_the_documented_seeds() {
+        // The enforcing programs in escrow/staking/presale re-derive
+        // exactly this on-chain from their own signer's key, so a client
+        // that got the seed or the owning program wrong would build
+        // instructions that fail with ConstraintSeeds — never ones that
+        // slip past the ban.
+        let wallet = Pubkey::new_unique();
+        let (expected, _) =
+            Pubkey::find_program_address(&[b"ban", wallet.as_ref()], &GOVERNANCE_PROGRAM_ID);
+        assert_eq!(super::super::ban_record_pda(&wallet).0, expected);
+    }
+
+    #[test]
+    fn list_wallet_encodes_the_wallet_reason_and_evidence_in_order() {
+        let admin = Pubkey::new_unique();
+        let wallet = Pubkey::new_unique();
+        let evidence = [7u8; 32];
+        let ix = list_wallet_ix(&admin, &wallet, BanReason::Sanctions, evidence);
+
+        assert_eq!(&ix.data[8..40], wallet.as_ref());
+        // Borsh tags an enum with its declaration index; Sanctions is 1.
+        assert_eq!(ix.data[40], 1);
+        assert_eq!(&ix.data[41..73], &evidence);
+        assert_eq!(ix.data.len(), 8 + 32 + 1 + 32);
+
+        let (governance_config, _) = governance_config_pda();
+        let (ban_record, _) = super::super::ban_record_pda(&wallet);
+        let actual: Vec<Pubkey> = ix.accounts.iter().map(|a| a.pubkey).collect();
+        assert_eq!(
+            actual,
+            [admin, governance_config, ban_record, system_program_id()]
+        );
+        assert!(ix.accounts[0].is_signer);
+        // The record is created here, so it must be writable; the config
+        // is only read for its admin field.
+        assert!(ix.accounts[2].is_writable);
+        assert!(!ix.accounts[1].is_writable);
+    }
+
+    #[test]
+    fn delist_targets_the_same_address_listing_created() {
+        // §12.2 requires delisting to be possible at all. The two
+        // builders agreeing on the address is what makes it possible in
+        // practice — a mismatch would leave a wallet listed forever with
+        // a delist instruction that always failed.
+        let admin = Pubkey::new_unique();
+        let wallet = Pubkey::new_unique();
+        let listed = list_wallet_ix(&admin, &wallet, BanReason::Scam, [0u8; 32]);
+        let delisted = delist_wallet_ix(&admin, &wallet);
+
+        assert_eq!(delisted.accounts[2].pubkey, listed.accounts[2].pubkey);
+        assert_eq!(&delisted.data[8..40], wallet.as_ref());
+        assert_eq!(delisted.data.len(), 8 + 32);
+        assert!(delisted.accounts[0].is_signer);
+    }
+
+    #[test]
+    fn create_proposal_carries_the_proposers_own_ban_address() {
+        // Not any ban address: the program derives this one from the
+        // signer's key. Passing someone else's — even a real, empty ban
+        // PDA — is rejected, which is the whole security property.
+        let proposer = Pubkey::new_unique();
+        let ix = create_proposal_ix(
+            &proposer,
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            1,
+            ProposalCategory::Parameter,
+            [0u8; 32],
+            [0u8; 32],
+            604_800,
+        );
+        assert_eq!(
+            ix.accounts[1].pubkey,
+            super::super::ban_record_pda(&proposer).0
+        );
+        assert!(!ix.accounts[1].is_writable && !ix.accounts[1].is_signer);
     }
 }
