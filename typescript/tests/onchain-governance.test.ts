@@ -14,7 +14,7 @@ import {
   updateConfigParameterIx,
   voteRecordPda,
 } from "../src/onchain/governance.js";
-import { stakeAccountPda } from "../src/onchain/staking.js";
+import { stakeAccountPda, stakingConfigPda } from "../src/onchain/staking.js";
 import {
   GOVERNANCE_PROGRAM_ID,
   ProposalCategory,
@@ -129,12 +129,18 @@ describe("governance instructions", () => {
     expectDiscriminator(ix, [20, 212, 15, 189, 69, 180, 69, 151]);
     const [governanceConfig] = governanceConfigPda();
     const [proposal] = proposalPda(proposalId);
+    const [stakingConfig] = stakingConfigPda();
     const [voterStake] = stakeAccountPda(voter, Role.Merchant);
     const [voteRecord] = voteRecordPda(proposal, voter);
+    // staking_config is required because effective_stake is now
+    // config-aware: a balance below the role minimum weighs zero. Omitting
+    // it does not silently skip that check — the instruction fails to
+    // deserialize, so every vote would break.
     expectAccounts(ix, [
       { pubkey: voter, isSigner: true, isWritable: true },
       { pubkey: governanceConfig, isSigner: false, isWritable: false },
       { pubkey: proposal, isSigner: false, isWritable: true },
+      { pubkey: stakingConfig, isSigner: false, isWritable: false },
       { pubkey: voterStake, isSigner: false, isWritable: false },
       { pubkey: voteRecord, isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },

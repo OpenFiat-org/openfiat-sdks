@@ -23,6 +23,15 @@ const TRADE_ESCROW_SEED: &[u8] = b"trade_escrow";
 const TRADE_ESCROW_TOKENS_SEED: &[u8] = b"trade_escrow_tokens";
 const FEE_CONFIG_SEED: &[u8] = b"fee_config";
 const DISPUTE_CASE_SEED: &[u8] = b"dispute_case";
+const ARBITRATION_POOL_SEED: &[u8] = b"arbitration_pool";
+
+/// The single arbitration pool holding OPEN dispute deposits. Its
+/// authority is the `FeeConfig` PDA, so only the program moves what it
+/// holds — deposits are owed either back to a merchant or forward to
+/// arbitrators, never to the admin.
+pub fn arbitration_pool_pda() -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[ARBITRATION_POOL_SEED], &ESCROW_PROGRAM_ID)
+}
 
 /// `[LIQUIDITY_VAULT_SEED, merchant, mint]`.
 pub fn liquidity_vault_pda(merchant: &Pubkey, mint: &Pubkey) -> (Pubkey, u8) {
@@ -396,6 +405,88 @@ pub fn release_escrow_ix(
     )
 }
 
+/// Creates the arbitration pool. Admin-only, once per deployment.
+pub fn initialize_arbitration_pool_ix(admin: &Pubkey, mint: &Pubkey) -> Instruction {
+    let (fee_config, _) = fee_config_pda();
+    let (arbitration_pool, _) = arbitration_pool_pda();
+    let data = instruction_data([77, 223, 22, 51, 66, 236, 5, 90], ());
+    Instruction::new_with_bytes(
+        ESCROW_PROGRAM_ID,
+        &data,
+        vec![
+            AccountMeta::new(*admin, true),
+            AccountMeta::new_readonly(fee_config, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new(arbitration_pool, false),
+            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(system_program_id(), false),
+        ],
+    )
+}
+
+/// Bills the merchant's OPEN vault for one advertisement listing.
+///
+/// Advertisements are off-chain gossip records, so there is no on-chain
+/// listing to bill against — the merchant is the on-chain anchor and their
+/// liquidity vault is the source. `advertisement_id` is carried for the
+/// emitted event only, as a join key for indexers; the program stores no
+/// per-advertisement state.
+pub fn charge_ad_listing_fee_ix(
+    merchant: &Pubkey,
+    mint: &Pubkey,
+    dev_treasury: &Pubkey,
+    advertisement_id: [u8; 32],
+) -> Instruction {
+    let (fee_config, _) = fee_config_pda();
+    let (liquidity_vault, _) = liquidity_vault_pda(merchant, mint);
+    let (token_vault, _) = liquidity_vault_tokens_pda(merchant, mint);
+    let data = instruction_data([200, 39, 46, 240, 232, 173, 134, 196], advertisement_id);
+    Instruction::new_with_bytes(
+        ESCROW_PROGRAM_ID,
+        &data,
+        vec![
+            AccountMeta::new_readonly(*merchant, true),
+            AccountMeta::new_readonly(fee_config, false),
+            AccountMeta::new(liquidity_vault, false),
+            AccountMeta::new(token_vault, false),
+            AccountMeta::new(*dev_treasury, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+        ],
+    )
+}
+
+/// Claims an arbitrator's pro-rata share of a resolved case's deposit.
+///
+/// Pull rather than push: pushing would put up to seven unknown token
+/// accounts on `execute_dispute_outcome`, where one closed account would
+/// fail the whole resolution and leave an escrow frozen because a *payout*
+/// failed.
+pub fn claim_arbitration_reward_ix(
+    arbitrator: &Pubkey,
+    reservation_id: u64,
+    deposit_mint: &Pubkey,
+    to: &Pubkey,
+) -> Instruction {
+    let (dispute_case, _) = dispute_case_pda(reservation_id);
+    let (fee_config, _) = fee_config_pda();
+    let (arbitration_pool, _) = arbitration_pool_pda();
+    let data = instruction_data([20, 88, 236, 69, 233, 200, 195, 238], ());
+    Instruction::new_with_bytes(
+        ESCROW_PROGRAM_ID,
+        &data,
+        vec![
+            AccountMeta::new_readonly(*arbitrator, true),
+            AccountMeta::new(dispute_case, false),
+            AccountMeta::new_readonly(fee_config, false),
+            AccountMeta::new_readonly(*deposit_mint, false),
+            AccountMeta::new(arbitration_pool, false),
+            AccountMeta::new(*to, false),
+            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+        ],
+    )
+}
+
 /// Callable by either party (buyer or seller) before `approve_settlement`
 /// has run (OFS-2300 §19a).
 pub fn cancel_reservation_ix(
@@ -448,15 +539,32 @@ pub fn expire_reservation_ix(seller: &Pubkey, mint: &Pubkey, reservation_id: u64
 /// Opens a dispute case and freezes the trade escrow in one atomic step
 /// (Phase 4b). `signer` must be the trade's buyer or seller; `payer`
 /// (which may be the same key) pays this new account's rent.
+/// Opens the on-chain case. The arbitration deposit is debited from the
+/// *merchant's* OPEN liquidity vault whoever opened the dispute — a buyer
+/// is often a one-time participant and must face no cost barrier to being
+/// heard (OFS-4100 §9.3). `merchant` is therefore the trade's seller
+/// rather than the caller, and `deposit_mint` is OPEN rather than the
+/// settlement stablecoin.
+///
+/// If the merchant's vault cannot cover the deposit the case still opens
+/// with whatever was there; requiring the full amount would let a merchant
+/// make themselves undisputable by keeping that vault empty.
+#[allow(clippy::too_many_arguments)]
 pub fn open_dispute_case_ix(
     signer: &Pubkey,
     payer: &Pubkey,
     reservation_id: u64,
     commit_window_secs: i64,
     reveal_window_secs: i64,
+    merchant: &Pubkey,
+    deposit_mint: &Pubkey,
 ) -> Instruction {
     let (trade_escrow, _) = trade_escrow_pda(reservation_id);
     let (dispute_case, _) = dispute_case_pda(reservation_id);
+    let (fee_config, _) = fee_config_pda();
+    let (merchant_open_vault, _) = liquidity_vault_pda(merchant, deposit_mint);
+    let (merchant_open_token_vault, _) = liquidity_vault_tokens_pda(merchant, deposit_mint);
+    let (arbitration_pool, _) = arbitration_pool_pda();
     let data = instruction_data(
         [28, 229, 240, 113, 124, 180, 117, 138],
         (commit_window_secs, reveal_window_secs),
@@ -469,6 +577,12 @@ pub fn open_dispute_case_ix(
             AccountMeta::new(*payer, true),
             AccountMeta::new(trade_escrow, false),
             AccountMeta::new(dispute_case, false),
+            AccountMeta::new_readonly(fee_config, false),
+            AccountMeta::new_readonly(*deposit_mint, false),
+            AccountMeta::new(merchant_open_vault, false),
+            AccountMeta::new(merchant_open_token_vault, false),
+            AccountMeta::new(arbitration_pool, false),
+            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
             AccountMeta::new_readonly(system_program_id(), false),
         ],
     )
@@ -511,6 +625,7 @@ pub fn reveal_dispute_vote_ix(
     salt: [u8; 32],
 ) -> Instruction {
     let (dispute_case, _) = dispute_case_pda(reservation_id);
+    let (staking_config, _) = staking::staking_config_pda();
     let (arbitrator_stake, _) = staking::stake_account_pda(arbitrator, super::Role::Arbitrator);
     let data = instruction_data([211, 91, 1, 75, 154, 51, 233, 106], (outcome, salt));
     Instruction::new_with_bytes(
@@ -519,6 +634,7 @@ pub fn reveal_dispute_vote_ix(
         vec![
             AccountMeta::new_readonly(*arbitrator, true),
             AccountMeta::new(dispute_case, false),
+            AccountMeta::new_readonly(staking_config, false),
             AccountMeta::new_readonly(arbitrator_stake, false),
         ],
     )
@@ -537,6 +653,7 @@ pub fn execute_dispute_outcome_ix(
     ecosystem_treasury: &Pubkey,
     infra_treasury: &Pubkey,
     emergency_reserve: &Pubkey,
+    deposit_mint: &Pubkey,
 ) -> Instruction {
     let (dispute_case, _) = dispute_case_pda(reservation_id);
     let (trade_escrow, _) = trade_escrow_pda(reservation_id);
@@ -544,6 +661,9 @@ pub fn execute_dispute_outcome_ix(
     let (liquidity_vault, _) = liquidity_vault_pda(seller, mint);
     let (liquidity_token_vault, _) = liquidity_vault_tokens_pda(seller, mint);
     let (fee_config, _) = fee_config_pda();
+    let (arbitration_pool, _) = arbitration_pool_pda();
+    let (merchant_open_vault, _) = liquidity_vault_pda(seller, deposit_mint);
+    let (merchant_open_token_vault, _) = liquidity_vault_tokens_pda(seller, deposit_mint);
     let data = instruction_data([158, 56, 238, 187, 219, 223, 212, 99], ());
     Instruction::new_with_bytes(
         ESCROW_PROGRAM_ID,
@@ -561,6 +681,10 @@ pub fn execute_dispute_outcome_ix(
             AccountMeta::new(*ecosystem_treasury, false),
             AccountMeta::new(*infra_treasury, false),
             AccountMeta::new(*emergency_reserve, false),
+            AccountMeta::new_readonly(*deposit_mint, false),
+            AccountMeta::new(arbitration_pool, false),
+            AccountMeta::new(merchant_open_vault, false),
+            AccountMeta::new(merchant_open_token_vault, false),
             AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
         ],
     )
@@ -707,7 +831,15 @@ mod tests {
                 [19, 147, 203, 128, 237, 194, 72, 183],
             ),
             (
-                open_dispute_case_ix(&merchant, &merchant, 1, 3600, 3600),
+                open_dispute_case_ix(
+                    &merchant,
+                    &merchant,
+                    1,
+                    3600,
+                    3600,
+                    &merchant,
+                    &Pubkey::new_unique(),
+                ),
                 [28, 229, 240, 113, 124, 180, 117, 138],
             ),
             (
@@ -723,6 +855,7 @@ mod tests {
                     &merchant,
                     &mint,
                     1,
+                    &Pubkey::new_unique(),
                     &Pubkey::new_unique(),
                     &Pubkey::new_unique(),
                     &Pubkey::new_unique(),
@@ -780,7 +913,12 @@ mod tests {
     fn reveal_dispute_vote_derives_the_stake_pda_under_the_staking_program() {
         let arbitrator = Pubkey::new_unique();
         let ix = reveal_dispute_vote_ix(&arbitrator, 1, DisputeOutcome::InvalidDispute, [1u8; 32]);
-        let arbitrator_stake_account = &ix.accounts[2];
+        // Index 3, not 2: `staking_config` was inserted ahead of the stake
+        // account when `effective_stake` became config-aware, so the reveal
+        // can tell whether the stake clears its role minimum.
+        let (expected_config, _) = staking::staking_config_pda();
+        assert_eq!(ix.accounts[2].pubkey, expected_config);
+        let arbitrator_stake_account = &ix.accounts[3];
         let (expected, _) = staking::stake_account_pda(&arbitrator, super::super::Role::Arbitrator);
         assert_eq!(arbitrator_stake_account.pubkey, expected);
         assert!(!arbitrator_stake_account.is_signer);

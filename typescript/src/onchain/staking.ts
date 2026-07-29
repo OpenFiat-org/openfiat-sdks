@@ -20,6 +20,7 @@ const DISCRIMINATORS = {
   requestUnstake: Uint8Array.from([44, 154, 110, 253, 160, 202, 54, 34]),
   withdrawUnstaked: Uint8Array.from([19, 202, 68, 255, 216, 40, 205, 61]),
   slash: Uint8Array.from([204, 141, 18, 161, 8, 177, 92, 142]),
+  fundRewardsVault: Uint8Array.from([157, 74, 89, 172, 187, 7, 119, 161]),
   distributeReward: Uint8Array.from([135, 65, 136, 143, 108, 234, 198, 46]),
   claimRewards: Uint8Array.from([4, 144, 132, 71, 116, 23, 151, 80]),
 } as const;
@@ -241,5 +242,35 @@ export function claimRewardsIx(
       meta(TOKEN_2022_PROGRAM_ID, false, false),
     ],
     data: instructionData(DISCRIMINATORS.claimRewards),
+  });
+}
+
+/**
+ * Moves OPEN into the pool `claimRewardsIx` pays out of.
+ *
+ * Permissionless: the only thing it can do is increase a pool that pays
+ * stakers, and OFS-4100 §9.1's two funding sources — the Infrastructure
+ * genesis bucket and the Infrastructure treasury's fee share — are
+ * neither this program's admin. Draining stays gated.
+ */
+export function fundRewardsVaultIx(
+  funder: PublicKey,
+  mint: PublicKey,
+  from: PublicKey,
+  amount: bigint,
+): TransactionInstruction {
+  const [stakingConfig] = stakingConfigPda();
+  const [rewardsVault] = rewardsVaultPda();
+  return new TransactionInstruction({
+    programId: STAKING_PROGRAM_ID,
+    keys: [
+      meta(funder, true, false),
+      meta(mint, false, false),
+      meta(stakingConfig, false, false),
+      meta(rewardsVault, false, true),
+      meta(from, false, true),
+      meta(TOKEN_2022_PROGRAM_ID, false, false),
+    ],
+    data: instructionData(DISCRIMINATORS.fundRewardsVault, u64LE(amount)),
   });
 }

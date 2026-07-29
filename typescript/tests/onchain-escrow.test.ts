@@ -9,7 +9,11 @@ import {
   createTradeEscrowIx,
   depositLiquidityIx,
   disputeCasePda,
+  arbitrationPoolPda,
+  chargeAdListingFeeIx,
+  claimArbitrationRewardIx,
   executeDisputeOutcomeIx,
+  initializeArbitrationPoolIx,
   expireReservationIx,
   feeConfigPda,
   fundTradeEscrowIx,
@@ -217,6 +221,58 @@ describe("escrow instructions", () => {
     ]);
   });
 
+  it("initializeArbitrationPoolIx", () => {
+    const admin = fakePubkey(40);
+    const openMint = fakePubkey(41);
+    const ix = initializeArbitrationPoolIx(admin, openMint);
+    expectDiscriminator(ix, [77, 223, 22, 51, 66, 236, 5, 90]);
+    expectAccounts(ix, [
+      { pubkey: admin, isSigner: true, isWritable: true },
+      { pubkey: feeConfigPda()[0], isSigner: false, isWritable: false },
+      { pubkey: openMint, isSigner: false, isWritable: false },
+      { pubkey: arbitrationPoolPda()[0], isSigner: false, isWritable: true },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ]);
+  });
+
+  it("chargeAdListingFeeIx bills the merchant's own vault", () => {
+    const openMint = fakePubkey(42);
+    const devTreasury = fakePubkey(43);
+    const advertisementId = new Uint8Array(32).fill(11);
+    const ix = chargeAdListingFeeIx(merchant, openMint, devTreasury, advertisementId);
+    expectDiscriminator(ix, [200, 39, 46, 240, 232, 173, 134, 196]);
+    expectAccounts(ix, [
+      { pubkey: merchant, isSigner: true, isWritable: false },
+      { pubkey: feeConfigPda()[0], isSigner: false, isWritable: false },
+      { pubkey: liquidityVaultPda(merchant, openMint)[0], isSigner: false, isWritable: true },
+      { pubkey: liquidityVaultTokensPda(merchant, openMint)[0], isSigner: false, isWritable: true },
+      { pubkey: devTreasury, isSigner: false, isWritable: true },
+      { pubkey: openMint, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+    ]);
+    // The advertisement id is carried for the emitted event only; it must
+    // still reach the program intact or an indexer cannot join on it.
+    expect(Array.from(ix.data.subarray(8, 40))).toEqual(Array.from(advertisementId));
+  });
+
+  it("claimArbitrationRewardIx", () => {
+    const arbitrator = fakePubkey(44);
+    const openMint = fakePubkey(45);
+    const to = fakePubkey(46);
+    const ix = claimArbitrationRewardIx(arbitrator, reservationId, openMint, to);
+    expectDiscriminator(ix, [20, 88, 236, 69, 233, 200, 195, 238]);
+    expectAccounts(ix, [
+      { pubkey: arbitrator, isSigner: true, isWritable: false },
+      { pubkey: disputeCasePda(reservationId)[0], isSigner: false, isWritable: true },
+      { pubkey: feeConfigPda()[0], isSigner: false, isWritable: false },
+      { pubkey: openMint, isSigner: false, isWritable: false },
+      { pubkey: arbitrationPoolPda()[0], isSigner: false, isWritable: true },
+      { pubkey: to, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+    ]);
+  });
+
   it("cancelReservationIx", () => {
     const ix = cancelReservationIx(buyer, mint, merchant, reservationId);
     expectDiscriminator(ix, [72, 162, 75, 180, 116, 157, 146, 172]);
@@ -252,17 +308,33 @@ describe("escrow instructions", () => {
     ]);
   });
 
-  it("openDisputeCaseIx", () => {
+  it("openDisputeCaseIx debits the merchant's OPEN vault, not the opener's", () => {
+    // A buyer opening the case must still source the deposit from the
+    // merchant's vault (OFS-4100 §9.3) — so the vault accounts are derived
+    // from `merchant`, while `buyer` is only the signer. Deriving them from
+    // the signer instead would make a buyer-opened dispute pay its own way,
+    // which is exactly the cost barrier the design removes.
     const payer = fakePubkey(20);
-    const ix = openDisputeCaseIx(buyer, payer, reservationId, 3_600n, 3_600n);
+    const depositMint = fakePubkey(30);
+    const ix = openDisputeCaseIx(buyer, payer, reservationId, 3_600n, 3_600n, merchant, depositMint);
     expectDiscriminator(ix, [28, 229, 240, 113, 124, 180, 117, 138]);
     const [tradeEscrow] = tradeEscrowPda(reservationId);
     const [disputeCase] = disputeCasePda(reservationId);
+    const [feeConfig] = feeConfigPda();
+    const [merchantOpenVault] = liquidityVaultPda(merchant, depositMint);
+    const [merchantOpenTokenVault] = liquidityVaultTokensPda(merchant, depositMint);
+    const [arbitrationPool] = arbitrationPoolPda();
     expectAccounts(ix, [
       { pubkey: buyer, isSigner: true, isWritable: false },
       { pubkey: payer, isSigner: true, isWritable: true },
       { pubkey: tradeEscrow, isSigner: false, isWritable: true },
       { pubkey: disputeCase, isSigner: false, isWritable: true },
+      { pubkey: feeConfig, isSigner: false, isWritable: false },
+      { pubkey: depositMint, isSigner: false, isWritable: false },
+      { pubkey: merchantOpenVault, isSigner: false, isWritable: true },
+      { pubkey: merchantOpenTokenVault, isSigner: false, isWritable: true },
+      { pubkey: arbitrationPool, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ]);
   });
@@ -295,9 +367,11 @@ describe("escrow instructions", () => {
     const ix = revealDisputeVoteIx(arbitrator, reservationId, DisputeOutcome.MerchantWins, salt, arbitratorStake);
     expectDiscriminator(ix, [211, 91, 1, 75, 154, 51, 233, 106]);
     const [disputeCase] = disputeCasePda(reservationId);
+    const [stakingConfig] = stakingConfigPda();
     expectAccounts(ix, [
       { pubkey: arbitrator, isSigner: true, isWritable: false },
       { pubkey: disputeCase, isSigner: false, isWritable: true },
+      { pubkey: stakingConfig, isSigner: false, isWritable: false },
       { pubkey: arbitratorStake, isSigner: false, isWritable: false },
     ]);
     expect(ix.data[8]).toBe(DisputeOutcome.MerchantWins);
@@ -305,7 +379,8 @@ describe("escrow instructions", () => {
   });
 
   it("executeDisputeOutcomeIx (permissionless)", () => {
-    const ix = executeDisputeOutcomeIx(mint, merchant, reservationId, destinations);
+    const depositMint = fakePubkey(31);
+    const ix = executeDisputeOutcomeIx(mint, merchant, reservationId, destinations, depositMint);
     expectDiscriminator(ix, [158, 56, 238, 187, 219, 223, 212, 99]);
     const [disputeCase] = disputeCasePda(reservationId);
     const [tradeEscrow] = tradeEscrowPda(reservationId);
@@ -326,6 +401,10 @@ describe("escrow instructions", () => {
       { pubkey: destinations.ecosystemTreasury, isSigner: false, isWritable: true },
       { pubkey: destinations.infraTreasury, isSigner: false, isWritable: true },
       { pubkey: destinations.emergencyReserve, isSigner: false, isWritable: true },
+      { pubkey: depositMint, isSigner: false, isWritable: false },
+      { pubkey: arbitrationPoolPda()[0], isSigner: false, isWritable: true },
+      { pubkey: liquidityVaultPda(merchant, depositMint)[0], isSigner: false, isWritable: true },
+      { pubkey: liquidityVaultTokensPda(merchant, depositMint)[0], isSigner: false, isWritable: true },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);
   });

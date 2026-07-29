@@ -17,6 +17,7 @@ const TRADE_ESCROW_SEED = Buffer.from("trade_escrow");
 const TRADE_ESCROW_TOKENS_SEED = Buffer.from("trade_escrow_tokens");
 const FEE_CONFIG_SEED = Buffer.from("fee_config");
 const DISPUTE_CASE_SEED = Buffer.from("dispute_case");
+const ARBITRATION_POOL_SEED = Buffer.from("arbitration_pool");
 
 const DISCRIMINATORS = {
   initializeFeeConfig: Uint8Array.from([62, 162, 20, 133, 121, 65, 145, 27]),
@@ -35,6 +36,9 @@ const DISCRIMINATORS = {
   commitDisputeVote: Uint8Array.from([210, 14, 34, 127, 75, 185, 189, 168]),
   revealDisputeVote: Uint8Array.from([211, 91, 1, 75, 154, 51, 233, 106]),
   executeDisputeOutcome: Uint8Array.from([158, 56, 238, 187, 219, 223, 212, 99]),
+  initializeArbitrationPool: Uint8Array.from([77, 223, 22, 51, 66, 236, 5, 90]),
+  chargeAdListingFee: Uint8Array.from([200, 39, 46, 240, 232, 173, 134, 196]),
+  claimArbitrationReward: Uint8Array.from([20, 88, 236, 69, 233, 200, 195, 238]),
 } as const;
 
 function reservationIdSeed(reservationId: bigint): Uint8Array {
@@ -78,6 +82,15 @@ export function disputeCasePda(reservationId: bigint): [PublicKey, number] {
     [DISPUTE_CASE_SEED, reservationIdSeed(reservationId)],
     ESCROW_PROGRAM_ID,
   );
+}
+
+/**
+ * The single arbitration pool holding OPEN dispute deposits. Deposits in
+ * it are owed either back to a merchant or forward to arbitrators, so its
+ * authority is the `FeeConfig` PDA — only the program moves what it holds.
+ */
+export function arbitrationPoolPda(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([ARBITRATION_POOL_SEED], ESCROW_PROGRAM_ID);
 }
 
 /** Mirrors `escrow::instructions::initialize_fee_config::InitializeFeeConfigParams`'s field order exactly. */
@@ -397,15 +410,33 @@ export function expireReservationIx(mint: PublicKey, seller: PublicKey, reservat
   });
 }
 
+/**
+ * Opens the on-chain case. The arbitration deposit is debited from the
+ * *merchant's* OPEN liquidity vault whoever opened the dispute — a buyer
+ * is often a one-time participant and must face no cost barrier to being
+ * heard (OFS-4100 §9.3). `merchant` is therefore the trade's seller, not
+ * the caller, and `depositMint` is OPEN rather than the settlement
+ * stablecoin.
+ *
+ * If the merchant's vault cannot cover the deposit the case still opens
+ * with whatever was there; requiring the full amount would let a merchant
+ * make themselves undisputable by keeping that vault empty.
+ */
 export function openDisputeCaseIx(
   signer: PublicKey,
   payer: PublicKey,
   reservationId: bigint,
   commitWindowSecs: bigint,
   revealWindowSecs: bigint,
+  merchant: PublicKey,
+  depositMint: PublicKey,
 ): TransactionInstruction {
   const [tradeEscrow] = tradeEscrowPda(reservationId);
   const [disputeCase] = disputeCasePda(reservationId);
+  const [feeConfig] = feeConfigPda();
+  const [merchantOpenVault] = liquidityVaultPda(merchant, depositMint);
+  const [merchantOpenTokenVault] = liquidityVaultTokensPda(merchant, depositMint);
+  const [arbitrationPool] = arbitrationPoolPda();
   return new TransactionInstruction({
     programId: ESCROW_PROGRAM_ID,
     keys: [
@@ -413,6 +444,12 @@ export function openDisputeCaseIx(
       meta(payer, true, true),
       meta(tradeEscrow, false, true),
       meta(disputeCase, false, true),
+      meta(feeConfig, false, false),
+      meta(depositMint, false, false),
+      meta(merchantOpenVault, false, true),
+      meta(merchantOpenTokenVault, false, true),
+      meta(arbitrationPool, false, true),
+      meta(TOKEN_2022_PROGRAM_ID, false, false),
       meta(SystemProgram.programId, false, false),
     ],
     data: instructionData(DISCRIMINATORS.openDisputeCase, i64LE(commitWindowSecs), i64LE(revealWindowSecs)),
@@ -453,22 +490,35 @@ export function revealDisputeVoteIx(
   arbitratorStake: PublicKey,
 ): TransactionInstruction {
   const [disputeCase] = disputeCasePda(reservationId);
+  const [stakingConfig] = stakingConfigPda();
   return new TransactionInstruction({
     programId: ESCROW_PROGRAM_ID,
     keys: [
       meta(arbitrator, true, false),
       meta(disputeCase, false, true),
+      meta(stakingConfig, false, false),
       meta(arbitratorStake, false, false),
     ],
     data: instructionData(DISCRIMINATORS.revealDisputeVote, enumTag(outcome), fixedBytes(salt, 32)),
   });
 }
 
+/**
+ * Tallies the case and moves the escrow. `depositMint` is OPEN — the
+ * arbitration deposit's denomination — and is distinct from `mint`, the
+ * settlement stablecoin.
+ *
+ * The program rejects a deposit vault that aliases the settlement vault,
+ * which is what happens when a trade settles in OPEN: Anchor would
+ * deserialize one account into two structs and write back only one,
+ * silently losing a balance update.
+ */
 export function executeDisputeOutcomeIx(
   mint: PublicKey,
   seller: PublicKey,
   reservationId: bigint,
   destinations: ReleaseDestinations,
+  depositMint: PublicKey,
 ): TransactionInstruction {
   const [disputeCase] = disputeCasePda(reservationId);
   const [tradeEscrow] = tradeEscrowPda(reservationId);
@@ -476,6 +526,9 @@ export function executeDisputeOutcomeIx(
   const [liquidityVault] = liquidityVaultPda(seller, mint);
   const [liquidityTokenVault] = liquidityVaultTokensPda(seller, mint);
   const [feeConfig] = feeConfigPda();
+  const [arbitrationPool] = arbitrationPoolPda();
+  const [merchantOpenVault] = liquidityVaultPda(seller, depositMint);
+  const [merchantOpenTokenVault] = liquidityVaultTokensPda(seller, depositMint);
   return new TransactionInstruction({
     programId: ESCROW_PROGRAM_ID,
     keys: [
@@ -491,8 +544,95 @@ export function executeDisputeOutcomeIx(
       meta(destinations.ecosystemTreasury, false, true),
       meta(destinations.infraTreasury, false, true),
       meta(destinations.emergencyReserve, false, true),
+      meta(depositMint, false, false),
+      meta(arbitrationPool, false, true),
+      meta(merchantOpenVault, false, true),
+      meta(merchantOpenTokenVault, false, true),
       meta(TOKEN_2022_PROGRAM_ID, false, false),
     ],
     data: instructionData(DISCRIMINATORS.executeDisputeOutcome),
+  });
+}
+
+/** Creates the arbitration pool. Admin-only, once per deployment. */
+export function initializeArbitrationPoolIx(admin: PublicKey, mint: PublicKey): TransactionInstruction {
+  const [feeConfig] = feeConfigPda();
+  const [arbitrationPool] = arbitrationPoolPda();
+  return new TransactionInstruction({
+    programId: ESCROW_PROGRAM_ID,
+    keys: [
+      meta(admin, true, true),
+      meta(feeConfig, false, false),
+      meta(mint, false, false),
+      meta(arbitrationPool, false, true),
+      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(SystemProgram.programId, false, false),
+    ],
+    data: instructionData(DISCRIMINATORS.initializeArbitrationPool),
+  });
+}
+
+/**
+ * Bills the merchant's OPEN vault for one advertisement listing.
+ *
+ * Advertisements are off-chain gossip records, so there is no on-chain
+ * listing to bill against — the merchant is the on-chain anchor and their
+ * liquidity vault is the source. `advertisementId` is recorded in the
+ * emitted event only, as a join key for indexers; the program stores no
+ * per-advertisement state.
+ */
+export function chargeAdListingFeeIx(
+  merchant: PublicKey,
+  mint: PublicKey,
+  devTreasury: PublicKey,
+  advertisementId: Uint8Array,
+): TransactionInstruction {
+  const [feeConfig] = feeConfigPda();
+  const [liquidityVault] = liquidityVaultPda(merchant, mint);
+  const [tokenVault] = liquidityVaultTokensPda(merchant, mint);
+  return new TransactionInstruction({
+    programId: ESCROW_PROGRAM_ID,
+    keys: [
+      meta(merchant, true, false),
+      meta(feeConfig, false, false),
+      meta(liquidityVault, false, true),
+      meta(tokenVault, false, true),
+      meta(devTreasury, false, true),
+      meta(mint, false, false),
+      meta(TOKEN_2022_PROGRAM_ID, false, false),
+    ],
+    data: instructionData(DISCRIMINATORS.chargeAdListingFee, fixedBytes(advertisementId, 32)),
+  });
+}
+
+/**
+ * Claims an arbitrator's pro-rata share of a resolved case's deposit.
+ *
+ * Pull rather than push: pushing would put up to seven unknown token
+ * accounts on `execute_dispute_outcome`, where one closed account would
+ * fail the whole resolution and leave an escrow frozen because a *payout*
+ * failed.
+ */
+export function claimArbitrationRewardIx(
+  arbitrator: PublicKey,
+  reservationId: bigint,
+  depositMint: PublicKey,
+  to: PublicKey,
+): TransactionInstruction {
+  const [disputeCase] = disputeCasePda(reservationId);
+  const [feeConfig] = feeConfigPda();
+  const [arbitrationPool] = arbitrationPoolPda();
+  return new TransactionInstruction({
+    programId: ESCROW_PROGRAM_ID,
+    keys: [
+      meta(arbitrator, true, false),
+      meta(disputeCase, false, true),
+      meta(feeConfig, false, false),
+      meta(depositMint, false, false),
+      meta(arbitrationPool, false, true),
+      meta(to, false, true),
+      meta(TOKEN_2022_PROGRAM_ID, false, false),
+    ],
+    data: instructionData(DISCRIMINATORS.claimArbitrationReward),
   });
 }

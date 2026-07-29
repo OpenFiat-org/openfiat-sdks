@@ -3,7 +3,7 @@ import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.j
 import { boolByte, borshString, enumTag, fixedBytes, i64LE, instructionData, meta, u16LE, u64LE } from "./codec.js";
 import { GOVERNANCE_PROGRAM_ID, RENT_SYSVAR_ID, TOKEN_2022_PROGRAM_ID } from "./constants.js";
 import type { ProposalCategory, Role } from "./constants.js";
-import { stakeAccountPda } from "./staking.js";
+import { stakeAccountPda, stakingConfigPda } from "./staking.js";
 
 /**
  * PDA seeds for `openfiat-governance` (OFS-4200 §6) — taken directly
@@ -139,6 +139,7 @@ export function castVoteIx(
 ): TransactionInstruction {
   const [governanceConfig] = governanceConfigPda();
   const [proposal] = proposalPda(proposalId);
+  const [stakingConfig] = stakingConfigPda();
   const [voterStake] = stakeAccountPda(voter, role);
   const [voteRecord] = voteRecordPda(proposal, voter);
   return new TransactionInstruction({
@@ -147,6 +148,7 @@ export function castVoteIx(
       meta(voter, true, true),
       meta(governanceConfig, false, false),
       meta(proposal, false, true),
+      meta(stakingConfig, false, false),
       meta(voterStake, false, false),
       meta(voteRecord, false, true),
       meta(SystemProgram.programId, false, false),

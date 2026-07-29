@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   claimRewardsIx,
+  fundRewardsVaultIx,
   distributeRewardIx,
   initializeStakeAccountIx,
   initializeStakingConfigIx,
@@ -184,5 +185,24 @@ describe("staking instructions", () => {
       { pubkey: to, isSigner: false, isWritable: true },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);
+  });
+
+  it("fundRewardsVaultIx is permissionless — the funder is the only signer", () => {
+    // Gating this on admin would mean re-issuing authority every time a
+    // funding source changed, and the only thing it can do is increase a
+    // pool that pays stakers. Draining stays gated behind claim_rewards.
+    const funder = fakePubkey(60);
+    const from = fakePubkey(61);
+    const ix = fundRewardsVaultIx(funder, mint, from, 250_000n);
+    expectDiscriminator(ix, [157, 74, 89, 172, 187, 7, 119, 161]);
+    expectAccounts(ix, [
+      { pubkey: funder, isSigner: true, isWritable: false },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: stakingConfigPda()[0], isSigner: false, isWritable: false },
+      { pubkey: rewardsVaultPda()[0], isSigner: false, isWritable: true },
+      { pubkey: from, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+    ]);
+    expect(Array.from(ix.data.subarray(8, 16))).toEqual([0x90, 0xd0, 0x03, 0, 0, 0, 0, 0]);
   });
 });
