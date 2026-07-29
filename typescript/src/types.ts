@@ -305,6 +305,17 @@ export interface Reservation {
 
 // --- Notifications (OFS-6000) ---
 
+/** `openfiat_types::NotificationChannel` — the channel a gateway
+ *  delivers on, matched against its registered service type at routing
+ *  time so a destination sealed for one channel cannot be routed to a
+ *  gateway that serves another. */
+export type NotificationChannel =
+  | "Email"
+  | "Telegram"
+  | "Sms"
+  | "Push"
+  | "Webhook";
+
 export type NotificationCategory =
   | "Trading"
   | "Marketplace"
@@ -339,10 +350,42 @@ export type DeliveryStatus =
   | "Retried"
   | "Expired";
 
+/**
+ * A destination sealed to the gateway that will deliver it
+ * (`openfiat-notifications`' `SubscriptionDestination`).
+ *
+ * The address is a ciphertext because subscriptions replicate to every
+ * node: in plaintext, a wallet's email address or phone number would be
+ * readable by every node operator on the network. Only the bound gateway
+ * can open it. Constructing one needs the sealing primitive itself, which
+ * this SDK does not yet expose — until it does, the only value a client
+ * can send is an empty list.
+ */
+export interface SealedBox {
+  ephemeral_public: Uint8Array;
+  nonce: Uint8Array;
+  ciphertext: Uint8Array;
+}
+
+export interface SubscriptionDestination {
+  service_id: string;
+  channel: NotificationChannel;
+  sealed: SealedBox;
+}
+
+/**
+ * Field order matters and is not cosmetic. The signature is verified
+ * against a re-serialization of this struct on the node, so the JSON key
+ * order this produces must match the Rust declaration order exactly —
+ * `destinations` sits between `enabled_categories` and `timestamp`. Omit
+ * it and the bytes the node hashes differ from the bytes signed here,
+ * which fails as `INVALID_SIGNATURE` rather than as a missing field.
+ */
 export interface SubscriptionUpdate {
   wallet: PeerIdBytes;
   wallet_public_key: PublicKeyBytes;
   enabled_categories: NotificationCategory[];
+  destinations: SubscriptionDestination[];
   timestamp: TimestampMs;
 }
 

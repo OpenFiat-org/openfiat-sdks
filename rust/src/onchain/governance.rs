@@ -20,6 +20,44 @@ const GOVERNANCE_CONFIG_SEED: &[u8] = b"governance_config";
 const DEPOSIT_VAULT_SEED: &[u8] = b"deposit_vault";
 const PROPOSAL_SEED: &[u8] = b"proposal";
 const VOTE_RECORD_SEED: &[u8] = b"vote";
+const PROPOSAL_ACTION_SEED: &[u8] = b"proposal_action";
+
+/// What a proposal, if it passes, is authorized to *do* (OFS-4200 §6,
+/// OFS-7100 §12.2) — `governance::state::GovernanceAction`.
+///
+/// This is what makes a governance vote able to cause a state change at
+/// all. `list_wallet`/`delist_wallet` take no privileged signer; they
+/// take a passed proposal whose action names the exact wallet, so the
+/// action has to be fixed at creation time and is what
+/// [`create_proposal_ix`] commits to.
+///
+/// Variant order must match `governance::state::GovernanceAction` —
+/// Borsh tags an enum with its declaration index, and a reordered copy
+/// here would encode "delist" where the program reads "list".
+#[derive(BorshSerialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GovernanceAction {
+    /// No on-chain effect. Informational proposals, and the categories
+    /// whose execution instructions are still record-only.
+    None,
+    ListWallet {
+        wallet: Pubkey,
+        reason: BanReason,
+        evidence_hash: [u8; 32],
+    },
+    DelistWallet {
+        wallet: Pubkey,
+    },
+}
+
+/// `[PROPOSAL_ACTION_SEED, proposal]` — one action per proposal, and one
+/// proposal per action. That binding is what stops a passed vote to ban
+/// wallet A being redeemed against wallet B.
+pub fn proposal_action_pda(proposal: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[PROPOSAL_ACTION_SEED, proposal.as_ref()],
+        &GOVERNANCE_PROGRAM_ID,
+    )
+}
 
 /// `[GOVERNANCE_CONFIG_SEED]` — a singleton.
 pub fn governance_config_pda() -> (Pubkey, u8) {
@@ -167,6 +205,15 @@ pub fn update_governance_config_ix(
 /// `from` is the proposer's own token account funding the stake deposit
 /// (`GovernanceConfig.deposit_amount`, refunded or forfeited once
 /// `tally_and_finalize` runs).
+///
+/// `action` is what the proposal will be entitled to do if it passes,
+/// and it is fixed here — there is no instruction that attaches or
+/// changes one later. That is deliberate on-chain: an action that could
+/// be added after voting opened would let a proposer gather votes on one
+/// thing and spend them on another. A [`GovernanceAction::ListWallet`]
+/// or [`GovernanceAction::DelistWallet`] must be proposed under
+/// [`ProposalCategory::Standards`]; the program rejects any other
+/// category, so listing and delisting face an identical bar.
 #[allow(clippy::too_many_arguments)]
 pub fn create_proposal_ix(
     proposer: &Pubkey,
@@ -177,13 +224,22 @@ pub fn create_proposal_ix(
     title_hash: [u8; 32],
     summary_hash: [u8; 32],
     voting_period_secs: i64,
+    action: GovernanceAction,
 ) -> Instruction {
     let (governance_config, _) = governance_config_pda();
     let (deposit_vault, _) = deposit_vault_pda();
     let (proposal, _) = proposal_pda(id);
+    let (proposal_action, _) = proposal_action_pda(&proposal);
     let data = instruction_data(
         [132, 116, 68, 174, 216, 160, 198, 22],
-        (id, category, title_hash, summary_hash, voting_period_secs),
+        (
+            id,
+            category,
+            title_hash,
+            summary_hash,
+            voting_period_secs,
+            action,
+        ),
     );
     Instruction::new_with_bytes(
         GOVERNANCE_PROGRAM_ID,
@@ -196,6 +252,7 @@ pub fn create_proposal_ix(
             AccountMeta::new(deposit_vault, false),
             AccountMeta::new(*from, false),
             AccountMeta::new(proposal, false),
+            AccountMeta::new(proposal_action, false),
             AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
             AccountMeta::new_readonly(system_program_id(), false),
             AccountMeta::new_readonly(super::RENT_SYSVAR_ID, false),
@@ -212,6 +269,7 @@ pub fn create_proposal_ix(
 pub fn cast_vote_ix(voter: &Pubkey, id: u64, in_favor: bool, role: Role) -> Instruction {
     let (governance_config, _) = governance_config_pda();
     let (proposal, _) = proposal_pda(id);
+    let (staking_config, _) = staking::staking_config_pda();
     let (voter_stake, _) = staking::stake_account_pda(voter, role);
     let (vote_record, _) = vote_record_pda(&proposal, voter);
     let data = instruction_data([20, 212, 15, 189, 69, 180, 69, 151], (in_favor, role));
@@ -222,6 +280,11 @@ pub fn cast_vote_ix(voter: &Pubkey, id: u64, in_favor: bool, role: Role) -> Inst
             AccountMeta::new(*voter, true),
             AccountMeta::new_readonly(governance_config, false),
             AccountMeta::new(proposal, false),
+            // `cast_vote` reads `StakingConfig` for the role's minimum
+            // stake, so a balance that has fallen below it carries no
+            // weight. This account was missing here and the builder
+            // produced an instruction the program could not accept.
+            AccountMeta::new_readonly(staking_config, false),
             AccountMeta::new_readonly(voter_stake, false),
             AccountMeta::new(vote_record, false),
             AccountMeta::new_readonly(system_program_id(), false),
@@ -308,44 +371,44 @@ pub fn authorize_treasury_spend_ix(id: u64, destination: Pubkey, amount: u64) ->
     )
 }
 
-/// Adds a wallet to the protocol-wide ban list (OFS-7100 §12).
+/// Adds a wallet to the protocol-wide ban list (OFS-7100 §12) by
+/// executing a proposal that has already passed.
 ///
 /// One instruction closes deposit access across `escrow`, `staking`,
 /// `presale` and `governance` at once — those programs read the record
 /// this creates rather than being separately notified, and no
 /// application can opt out.
 ///
-/// The authority is `GovernanceConfig.admin`: a single key, checked
-/// directly. It is **not** a governance vote, despite §12.2 requiring
-/// one. `governance`'s proposal-execution instructions only record an
-/// authorization (`Proposal.executed = true`) and cannot mutate state,
-/// so there is no working vote-gated path to build on yet. Do not
-/// describe this as governance-controlled in any interface. See
-/// `governance::instructions::list_wallet`'s doc comment for what
-/// closing that gap requires.
+/// # The authority is the vote
 ///
-/// `evidence_hash` pins the off-chain evidence the listing rests on:
-/// §12.2 separates publishing evidence (a risk intelligence provider)
-/// from deciding exclusion (governance), and this is where the former is
-/// committed to so a listing can be contested against a fixed artefact.
-pub fn list_wallet_ix(
-    admin: &Pubkey,
-    wallet: &Pubkey,
-    reason: BanReason,
-    evidence_hash: [u8; 32],
-) -> Instruction {
+/// There is no privileged signer. `proposal_id` must name a proposal
+/// that is `Accepted`, met quorum, has not been executed, is past its
+/// `vote_lock_secs` execution timelock, and whose `GovernanceAction`
+/// names **this** wallet. `GovernanceConfig.admin` is not read.
+///
+/// `submitter` signs and pays the `BanRecord`'s rent, and that is all it
+/// does — any funded key will do. The reason and evidence hash are read
+/// from the proposal, not passed here, so the party who submits cannot
+/// record grounds the voters never agreed to.
+///
+/// Earlier versions of this builder took an `admin` and the reason and
+/// evidence as arguments, because the program checked a single key. That
+/// meant one key could deny any wallet deposit access to the entire
+/// protocol. It no longer can.
+pub fn list_wallet_ix(submitter: &Pubkey, proposal_id: u64, wallet: &Pubkey) -> Instruction {
     let (governance_config, _) = governance_config_pda();
+    let (proposal, _) = proposal_pda(proposal_id);
+    let (proposal_action, _) = proposal_action_pda(&proposal);
     let (ban_record, _) = super::ban_record_pda(wallet);
-    let data = instruction_data(
-        [176, 149, 148, 11, 126, 182, 162, 248],
-        (wallet.to_bytes(), reason, evidence_hash),
-    );
+    let data = instruction_data([176, 149, 148, 11, 126, 182, 162, 248], wallet.to_bytes());
     Instruction::new_with_bytes(
         GOVERNANCE_PROGRAM_ID,
         &data,
         vec![
-            AccountMeta::new(*admin, true),
+            AccountMeta::new(*submitter, true),
             AccountMeta::new_readonly(governance_config, false),
+            AccountMeta::new(proposal, false),
+            AccountMeta::new_readonly(proposal_action, false),
             AccountMeta::new(ban_record, false),
             AccountMeta::new_readonly(system_program_id(), false),
         ],
@@ -353,24 +416,29 @@ pub fn list_wallet_ix(
 }
 
 /// Removes a wallet from the ban list, restoring deposit access
-/// protocol-wide (OFS-7100 §12.2).
+/// protocol-wide (OFS-7100 §12.2), by executing a passed proposal.
 ///
 /// Mandatory rather than optional: once rejection is protocol-wide an
 /// erroneous listing costs a wallet all protocol access, so the reversal
-/// path has to be as available as the exclusion path. Same authority as
-/// [`list_wallet_ix`], deliberately — an authority that could exclude
-/// but not readmit is the failure §12.2 names. Rent returns to `admin`,
-/// who paid it at listing.
-pub fn delist_wallet_ix(admin: &Pubkey, wallet: &Pubkey) -> Instruction {
+/// path has to be as available as the exclusion path. It runs through
+/// the identical mechanism as [`list_wallet_ix`] — same guard, same
+/// category, same absence of a privileged signer — because an authority
+/// that could exclude but not readmit is the failure §12.2 names. The
+/// closed record's rent goes to whoever submits.
+pub fn delist_wallet_ix(submitter: &Pubkey, proposal_id: u64, wallet: &Pubkey) -> Instruction {
     let (governance_config, _) = governance_config_pda();
+    let (proposal, _) = proposal_pda(proposal_id);
+    let (proposal_action, _) = proposal_action_pda(&proposal);
     let (ban_record, _) = super::ban_record_pda(wallet);
     let data = instruction_data([40, 136, 186, 228, 254, 114, 109, 134], wallet.to_bytes());
     Instruction::new_with_bytes(
         GOVERNANCE_PROGRAM_ID,
         &data,
         vec![
-            AccountMeta::new(*admin, true),
+            AccountMeta::new(*submitter, true),
             AccountMeta::new_readonly(governance_config, false),
+            AccountMeta::new(proposal, false),
+            AccountMeta::new_readonly(proposal_action, false),
             AccountMeta::new(ban_record, false),
         ],
     )
@@ -478,6 +546,7 @@ mod tests {
                     [0u8; 32],
                     [0u8; 32],
                     604_800,
+                    GovernanceAction::None,
                 ),
                 [132, 116, 68, 174, 216, 160, 198, 22],
             ),
@@ -486,11 +555,11 @@ mod tests {
                 [20, 212, 15, 189, 69, 180, 69, 151],
             ),
             (
-                list_wallet_ix(&admin, &voter, BanReason::Sanctions, [0u8; 32]),
+                list_wallet_ix(&admin, 1, &voter),
                 [176, 149, 148, 11, 126, 182, 162, 248],
             ),
             (
-                delist_wallet_ix(&admin, &voter),
+                delist_wallet_ix(&admin, 1, &voter),
                 [40, 136, 186, 228, 254, 114, 109, 134],
             ),
             (
@@ -525,10 +594,25 @@ mod tests {
     fn cast_vote_reads_the_staking_programs_stake_account_not_a_governance_pda() {
         let voter = Pubkey::new_unique();
         let ix = cast_vote_ix(&voter, 1, true, Role::NodeOperator);
-        let voter_stake_meta = &ix.accounts[3];
+        let voter_stake_meta = &ix.accounts[4];
         let (expected, _) = staking::stake_account_pda(&voter, Role::NodeOperator);
         assert_eq!(voter_stake_meta.pubkey, expected);
         assert!(!voter_stake_meta.is_signer && !voter_stake_meta.is_writable);
+    }
+
+    #[test]
+    fn cast_vote_carries_the_staking_config_the_program_reads_the_role_minimum_from() {
+        // This account was absent from the builder, which made every
+        // `cast_vote` it produced unsendable: Anchor deserializes the
+        // accounts positionally, so a missing one shifts everything
+        // after it. The assertion is on the position as well as the
+        // address, because that is what actually went wrong.
+        let voter = Pubkey::new_unique();
+        let ix = cast_vote_ix(&voter, 1, true, Role::NodeOperator);
+        let (staking_config, _) = staking::staking_config_pda();
+        assert_eq!(ix.accounts[3].pubkey, staking_config);
+        assert!(!ix.accounts[3].is_signer && !ix.accounts[3].is_writable);
+        assert_eq!(ix.accounts.len(), 7);
     }
 
     #[test]
@@ -550,30 +634,42 @@ mod tests {
     }
 
     #[test]
-    fn list_wallet_encodes_the_wallet_reason_and_evidence_in_order() {
-        let admin = Pubkey::new_unique();
+    fn list_wallet_carries_a_proposal_and_its_action_and_no_authority() {
+        // The property that matters: nothing in this instruction is a
+        // key with standing. The only signer is the rent payer, and the
+        // two accounts that decide whether it succeeds are the proposal
+        // and the action the vote fixed to it.
+        let submitter = Pubkey::new_unique();
         let wallet = Pubkey::new_unique();
-        let evidence = [7u8; 32];
-        let ix = list_wallet_ix(&admin, &wallet, BanReason::Sanctions, evidence);
+        let ix = list_wallet_ix(&submitter, 42, &wallet);
 
         assert_eq!(&ix.data[8..40], wallet.as_ref());
-        // Borsh tags an enum with its declaration index; Sanctions is 1.
-        assert_eq!(ix.data[40], 1);
-        assert_eq!(&ix.data[41..73], &evidence);
-        assert_eq!(ix.data.len(), 8 + 32 + 1 + 32);
+        assert_eq!(ix.data.len(), 8 + 32);
 
         let (governance_config, _) = governance_config_pda();
+        let (proposal, _) = proposal_pda(42);
+        let (proposal_action, _) = proposal_action_pda(&proposal);
         let (ban_record, _) = super::super::ban_record_pda(&wallet);
         let actual: Vec<Pubkey> = ix.accounts.iter().map(|a| a.pubkey).collect();
         assert_eq!(
             actual,
-            [admin, governance_config, ban_record, system_program_id()]
+            [
+                submitter,
+                governance_config,
+                proposal,
+                proposal_action,
+                ban_record,
+                system_program_id()
+            ]
         );
+        // The proposal is spent (`executed = true`) and the record is
+        // created, so both are writable; the config is read only for
+        // `vote_lock_secs`, and the action is never written at all.
         assert!(ix.accounts[0].is_signer);
-        // The record is created here, so it must be writable; the config
-        // is only read for its admin field.
         assert!(ix.accounts[2].is_writable);
+        assert!(ix.accounts[4].is_writable);
         assert!(!ix.accounts[1].is_writable);
+        assert!(!ix.accounts[3].is_writable);
     }
 
     #[test]
@@ -582,37 +678,98 @@ mod tests {
         // builders agreeing on the address is what makes it possible in
         // practice — a mismatch would leave a wallet listed forever with
         // a delist instruction that always failed.
-        let admin = Pubkey::new_unique();
+        let submitter = Pubkey::new_unique();
         let wallet = Pubkey::new_unique();
-        let listed = list_wallet_ix(&admin, &wallet, BanReason::Scam, [0u8; 32]);
-        let delisted = delist_wallet_ix(&admin, &wallet);
+        let listed = list_wallet_ix(&submitter, 1, &wallet);
+        let delisted = delist_wallet_ix(&submitter, 2, &wallet);
 
-        assert_eq!(delisted.accounts[2].pubkey, listed.accounts[2].pubkey);
+        assert_eq!(delisted.accounts[4].pubkey, listed.accounts[4].pubkey);
         assert_eq!(&delisted.data[8..40], wallet.as_ref());
         assert_eq!(delisted.data.len(), 8 + 32);
         assert!(delisted.accounts[0].is_signer);
     }
 
     #[test]
-    fn create_proposal_carries_the_proposers_own_ban_address() {
+    fn listing_and_delisting_take_the_same_shape_of_authority() {
+        // An exclusion power wider than the readmission power is the
+        // failure OFS-7100 §12.2 names. Both builders taking a proposal,
+        // its action, and a signer with no constraint on it is what
+        // keeps them the same width.
+        let submitter = Pubkey::new_unique();
+        let wallet = Pubkey::new_unique();
+        let listed = list_wallet_ix(&submitter, 7, &wallet);
+        let delisted = delist_wallet_ix(&submitter, 7, &wallet);
+
+        let shape = |ix: &Instruction| -> Vec<(Pubkey, bool, bool)> {
+            ix.accounts
+                .iter()
+                .take(4)
+                .map(|a| (a.pubkey, a.is_signer, a.is_writable))
+                .collect()
+        };
+        assert_eq!(shape(&listed), shape(&delisted));
+    }
+
+    #[test]
+    fn create_proposal_carries_the_proposers_own_ban_address_and_the_action_pda() {
         // Not any ban address: the program derives this one from the
         // signer's key. Passing someone else's — even a real, empty ban
         // PDA — is rejected, which is the whole security property.
         let proposer = Pubkey::new_unique();
+        let wallet = Pubkey::new_unique();
         let ix = create_proposal_ix(
             &proposer,
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
             1,
-            ProposalCategory::Parameter,
+            ProposalCategory::Standards,
             [0u8; 32],
             [0u8; 32],
             604_800,
+            GovernanceAction::ListWallet {
+                wallet,
+                reason: BanReason::Sanctions,
+                evidence_hash: [7u8; 32],
+            },
         );
         assert_eq!(
             ix.accounts[1].pubkey,
             super::super::ban_record_pda(&proposer).0
         );
         assert!(!ix.accounts[1].is_writable && !ix.accounts[1].is_signer);
+
+        // The action account is created here and nowhere else — the
+        // action a proposal may perform is fixed before the first vote.
+        let (proposal, _) = proposal_pda(1);
+        assert_eq!(ix.accounts[7].pubkey, proposal_action_pda(&proposal).0);
+        assert!(ix.accounts[7].is_writable);
+
+        // 8 discriminator + u64 + category tag + 2×32 hashes + i64,
+        // then the action: variant tag + pubkey + reason tag + 32.
+        let action_offset = 8 + 8 + 1 + 32 + 32 + 8;
+        assert_eq!(ix.data[action_offset], 1); // ListWallet is variant 1
+        assert_eq!(
+            &ix.data[action_offset + 1..action_offset + 33],
+            wallet.as_ref()
+        );
+        assert_eq!(ix.data[action_offset + 33], 1); // Sanctions
+        assert_eq!(&ix.data[action_offset + 34..], &[7u8; 32]);
+    }
+
+    #[test]
+    fn a_none_action_encodes_as_a_single_tag_byte() {
+        let ix = create_proposal_ix(
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            3,
+            ProposalCategory::Parameter,
+            [0u8; 32],
+            [0u8; 32],
+            60,
+            GovernanceAction::None,
+        );
+        assert_eq!(ix.data.len(), 8 + 8 + 1 + 32 + 32 + 8 + 1);
+        assert_eq!(*ix.data.last().unwrap(), 0);
     }
 }

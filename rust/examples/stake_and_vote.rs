@@ -79,6 +79,12 @@ fn main() {
         [0u8; 32],
         [0u8; 32],
         7 * 24 * 3600,
+        // What this proposal may do if it passes, fixed here and never
+        // changeable afterwards. `None` for a parameter proposal, whose
+        // execution instruction is still record-only; a ban-list
+        // proposal would carry `GovernanceAction::ListWallet { .. }`
+        // and would have to be filed under `Standards`.
+        governance::GovernanceAction::None,
     );
     let cast_vote = governance::cast_vote_ix(&voter.pubkey(), 1, true, Role::Merchant);
 

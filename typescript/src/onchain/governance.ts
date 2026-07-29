@@ -1,6 +1,17 @@
 import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 
-import { boolByte, borshString, enumTag, fixedBytes, i64LE, instructionData, meta, u16LE, u64LE } from "./codec.js";
+import {
+  boolByte,
+  borshString,
+  concatBytes,
+  enumTag,
+  fixedBytes,
+  i64LE,
+  instructionData,
+  meta,
+  u16LE,
+  u64LE,
+} from "./codec.js";
 import { banRecordPda, GOVERNANCE_PROGRAM_ID, RENT_SYSVAR_ID, TOKEN_2022_PROGRAM_ID } from "./constants.js";
 import type { BanReason, ProposalCategory, Role } from "./constants.js";
 import { stakeAccountPda, stakingConfigPda } from "./staking.js";
@@ -13,6 +24,7 @@ const GOVERNANCE_CONFIG_SEED = Buffer.from("governance_config");
 const DEPOSIT_VAULT_SEED = Buffer.from("deposit_vault");
 const PROPOSAL_SEED = Buffer.from("proposal");
 const VOTE_RECORD_SEED = Buffer.from("vote");
+const PROPOSAL_ACTION_SEED = Buffer.from("proposal_action");
 
 const DISCRIMINATORS = {
   initializeGovernanceConfig: Uint8Array.from([15, 40, 42, 141, 94, 104, 27, 201]),
@@ -49,6 +61,62 @@ export function voteRecordPda(proposal: PublicKey, voter: PublicKey): [PublicKey
     [VOTE_RECORD_SEED, proposal.toBytes(), voter.toBytes()],
     GOVERNANCE_PROGRAM_ID,
   );
+}
+
+/** `[PROPOSAL_ACTION_SEED, proposal]` — one action per proposal and one
+ *  proposal per action. That binding is what stops a passed vote to ban
+ *  wallet A being redeemed against wallet B. */
+export function proposalActionPda(proposal: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [PROPOSAL_ACTION_SEED, proposal.toBytes()],
+    GOVERNANCE_PROGRAM_ID,
+  );
+}
+
+/**
+ * What a proposal, if it passes, is authorized to *do* (OFS-4200 §6,
+ * OFS-7100 §12.2) — `governance::state::GovernanceAction`.
+ *
+ * This is what makes a governance vote able to cause a state change at
+ * all: `listWalletIx`/`delistWalletIx` take no privileged signer, only a
+ * passed proposal whose action names the exact wallet. The action is
+ * fixed by `createProposalIx` and can never be attached or changed
+ * afterwards.
+ *
+ * Borsh encodes an enum as a variant tag byte followed by that variant's
+ * fields in declaration order, so `kind` must stay 0/1/2 in the order
+ * the on-chain enum declares.
+ */
+export type GovernanceAction =
+  | { kind: "none" }
+  | { kind: "listWallet"; wallet: PublicKey; reason: BanReason; evidenceHash: Uint8Array }
+  | { kind: "delistWallet"; wallet: PublicKey };
+
+/** No on-chain effect — informational proposals, and the categories whose
+ *  execution instructions are still record-only. */
+export const noAction: GovernanceAction = { kind: "none" };
+
+const ACTION_TAGS: Record<GovernanceAction["kind"], number> = {
+  none: 0,
+  listWallet: 1,
+  delistWallet: 2,
+};
+
+function encodeAction(action: GovernanceAction): Uint8Array {
+  const tag = enumTag(ACTION_TAGS[action.kind]);
+  switch (action.kind) {
+    case "none":
+      return tag;
+    case "listWallet":
+      return concatBytes(
+        tag,
+        action.wallet.toBytes(),
+        enumTag(action.reason),
+        fixedBytes(action.evidenceHash, 32),
+      );
+    case "delistWallet":
+      return concatBytes(tag, action.wallet.toBytes());
+  }
 }
 
 /** Mirrors `governance::instructions::initialize_governance_config::InitializeGovernanceConfigParams`'s field order exactly. */
@@ -150,6 +218,15 @@ export function updateGovernanceConfigIx(
   });
 }
 
+/**
+ * `action` is what the proposal will be entitled to do if it passes, and
+ * it is fixed here — nothing attaches or changes one later. An action
+ * that could be added after voting opened would let a proposer gather
+ * votes on one thing and spend them on another. A `listWallet` or
+ * `delistWallet` action must be filed under `ProposalCategory.Standards`;
+ * the program rejects any other category, so listing and delisting face
+ * an identical bar.
+ */
 export function createProposalIx(
   proposer: PublicKey,
   mint: PublicKey,
@@ -159,10 +236,12 @@ export function createProposalIx(
   titleHash: Uint8Array,
   summaryHash: Uint8Array,
   votingPeriodSecs: bigint,
+  action: GovernanceAction,
 ): TransactionInstruction {
   const [governanceConfig] = governanceConfigPda();
   const [depositVault] = depositVaultPda();
   const [proposal] = proposalPda(id);
+  const [proposalAction] = proposalActionPda(proposal);
   return new TransactionInstruction({
     programId: GOVERNANCE_PROGRAM_ID,
     keys: [
@@ -173,6 +252,7 @@ export function createProposalIx(
       meta(depositVault, false, true),
       meta(from, false, true),
       meta(proposal, false, true),
+      meta(proposalAction, false, true),
       meta(TOKEN_2022_PROGRAM_ID, false, false),
       meta(SystemProgram.programId, false, false),
       meta(RENT_SYSVAR_ID, false, false),
@@ -184,6 +264,7 @@ export function createProposalIx(
       fixedBytes(titleHash, 32),
       fixedBytes(summaryHash, 32),
       i64LE(votingPeriodSecs),
+      encodeAction(action),
     ),
   });
 }
@@ -294,71 +375,83 @@ export function authorizeTreasurySpendIx(
 }
 
 /**
- * Adds a wallet to the protocol-wide ban list (OFS-7100 §12).
+ * Adds a wallet to the protocol-wide ban list (OFS-7100 §12) by
+ * executing a proposal that has already passed.
  *
  * One instruction closes deposit access across `escrow`, `staking`,
  * `presale` and `governance` at once — those programs read the record
  * this creates, they are not separately notified, and no application
  * can opt out.
  *
- * The authority is `GovernanceConfig.admin`: a single key, checked
- * directly. It is **not** a governance vote, despite §12.2 requiring
- * one — `governance`'s proposal-execution instructions only record an
- * authorization (`Proposal.executed = true`) and cannot mutate state,
- * so no working vote-gated path exists to build on yet. Do not present
- * this to users as governance-controlled. See
- * `governance::instructions::list_wallet`'s doc comment for what
- * closing that gap requires.
+ * **The authority is the vote.** There is no privileged signer.
+ * `proposalId` must name a proposal that is `Accepted`, met quorum, has
+ * not been executed, is past its `voteLockSecs` execution timelock, and
+ * whose `GovernanceAction` names *this* wallet.
+ * `GovernanceConfig.admin` is not read.
  *
- * `evidenceHash` pins the off-chain evidence the listing rests on. §12.2
- * separates publishing evidence (a risk intelligence provider) from
- * deciding exclusion (governance); this is where the former is
- * committed to so a listing can be contested against a fixed artefact.
+ * `submitter` signs and pays the ban record's rent, and that is all it
+ * does — any funded key will do. The reason and evidence hash come from
+ * the proposal rather than from arguments here, so whoever submits
+ * cannot record grounds the voters never agreed to. §12.2 separates
+ * publishing evidence (a risk intelligence provider) from deciding
+ * exclusion (governance); the evidence hash is pinned by the proposal so
+ * a listing can be contested against a fixed artefact.
+ *
+ * Earlier versions took an `admin` plus the reason and evidence, because
+ * the program checked a single key — one key could deny any wallet
+ * deposit access to the whole protocol. It no longer can.
  */
 export function listWalletIx(
-  admin: PublicKey,
+  submitter: PublicKey,
+  proposalId: bigint,
   wallet: PublicKey,
-  reason: BanReason,
-  evidenceHash: Uint8Array,
 ): TransactionInstruction {
   const [governanceConfig] = governanceConfigPda();
+  const [proposal] = proposalPda(proposalId);
+  const [proposalAction] = proposalActionPda(proposal);
   const [banRecord] = banRecordPda(wallet);
   return new TransactionInstruction({
     programId: GOVERNANCE_PROGRAM_ID,
     keys: [
-      meta(admin, true, true),
+      meta(submitter, true, true),
       meta(governanceConfig, false, false),
+      meta(proposal, false, true),
+      meta(proposalAction, false, false),
       meta(banRecord, false, true),
       meta(SystemProgram.programId, false, false),
     ],
-    data: instructionData(
-      DISCRIMINATORS.listWallet,
-      wallet.toBytes(),
-      enumTag(reason),
-      fixedBytes(evidenceHash, 32),
-    ),
+    data: instructionData(DISCRIMINATORS.listWallet, wallet.toBytes()),
   });
 }
 
 /**
  * Removes a wallet from the ban list, restoring deposit access
- * protocol-wide (OFS-7100 §12.2).
+ * protocol-wide (OFS-7100 §12.2), by executing a passed proposal.
  *
  * Mandatory rather than optional: once rejection is protocol-wide, an
  * erroneous listing costs a wallet all protocol access, so the reversal
- * path has to be as available as the exclusion path. Same authority as
- * `listWalletIx`, deliberately — an authority that could exclude but
- * not readmit is the failure §12.2 names. Rent returns to `admin`, who
- * paid it at listing.
+ * path has to be as available as the exclusion path. It runs through the
+ * identical mechanism as `listWalletIx` — same guard, same category,
+ * same absence of a privileged signer — because an authority that could
+ * exclude but not readmit is the failure §12.2 names. The closed
+ * record's rent goes to whoever submits.
  */
-export function delistWalletIx(admin: PublicKey, wallet: PublicKey): TransactionInstruction {
+export function delistWalletIx(
+  submitter: PublicKey,
+  proposalId: bigint,
+  wallet: PublicKey,
+): TransactionInstruction {
   const [governanceConfig] = governanceConfigPda();
+  const [proposal] = proposalPda(proposalId);
+  const [proposalAction] = proposalActionPda(proposal);
   const [banRecord] = banRecordPda(wallet);
   return new TransactionInstruction({
     programId: GOVERNANCE_PROGRAM_ID,
     keys: [
-      meta(admin, true, true),
+      meta(submitter, true, true),
       meta(governanceConfig, false, false),
+      meta(proposal, false, true),
+      meta(proposalAction, false, false),
       meta(banRecord, false, true),
     ],
     data: instructionData(DISCRIMINATORS.delistWallet, wallet.toBytes()),
