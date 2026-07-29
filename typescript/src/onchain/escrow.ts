@@ -19,6 +19,7 @@ const DISPUTE_CASE_SEED = Buffer.from("dispute_case");
 
 const DISCRIMINATORS = {
   initializeFeeConfig: Uint8Array.from([62, 162, 20, 133, 121, 65, 145, 27]),
+  updateFeeConfig: Uint8Array.from([104, 184, 103, 242, 88, 151, 107, 20]),
   createLiquidityVault: Uint8Array.from([204, 255, 106, 205, 72, 186, 252, 83]),
   depositLiquidity: Uint8Array.from([245, 99, 59, 25, 151, 71, 233, 249]),
   reserveLiquidity: Uint8Array.from([197, 37, 232, 60, 182, 38, 12, 84]),
@@ -112,6 +113,64 @@ export function initializeFeeConfigIx(admin: PublicKey, params: InitializeFeeCon
       params.ecosystemTreasury.toBytes(),
       params.infraTreasury.toBytes(),
       params.emergencyReserve.toBytes(),
+      u16LE(params.devTreasuryBps),
+      u16LE(params.ecosystemTreasuryBps),
+      u16LE(params.infraTreasuryBps),
+      u16LE(params.emergencyReserveBps),
+      i64LE(params.timeoutSecs),
+    ),
+  });
+}
+
+/** Numeric half of `update_fee_config`; treasuries are accounts, not params. */
+export interface UpdateFeeConfigParams {
+  adListingFee: bigint;
+  disputeFilingFee: bigint;
+  settlementFeeBps: number;
+  devTreasuryBps: number;
+  ecosystemTreasuryBps: number;
+  infraTreasuryBps: number;
+  emergencyReserveBps: number;
+  timeoutSecs: bigint;
+}
+
+/**
+ * Corrects the singleton `FeeConfig` after initialization (admin-only).
+ *
+ * The treasuries are accounts here rather than params because the program
+ * takes them as token accounts constrained to `mint` — a wallet address
+ * cannot be stored where a token account is required. The devnet config was
+ * originally initialized with owner wallets, which made `release_escrow`
+ * unexecutable; this shape prevents that.
+ */
+export function updateFeeConfigIx(
+  admin: PublicKey,
+  mint: PublicKey,
+  treasuries: {
+    devTreasury: PublicKey;
+    ecosystemTreasury: PublicKey;
+    infraTreasury: PublicKey;
+    emergencyReserve: PublicKey;
+  },
+  params: UpdateFeeConfigParams,
+): TransactionInstruction {
+  const [feeConfig] = feeConfigPda();
+  return new TransactionInstruction({
+    programId: ESCROW_PROGRAM_ID,
+    keys: [
+      meta(admin, true, false),
+      meta(feeConfig, false, true),
+      meta(mint, false, false),
+      meta(treasuries.devTreasury, false, false),
+      meta(treasuries.ecosystemTreasury, false, false),
+      meta(treasuries.infraTreasury, false, false),
+      meta(treasuries.emergencyReserve, false, false),
+    ],
+    data: instructionData(
+      DISCRIMINATORS.updateFeeConfig,
+      u64LE(params.adListingFee),
+      u64LE(params.disputeFilingFee),
+      u16LE(params.settlementFeeBps),
       u16LE(params.devTreasuryBps),
       u16LE(params.ecosystemTreasuryBps),
       u16LE(params.infraTreasuryBps),

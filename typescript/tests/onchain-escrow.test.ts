@@ -14,6 +14,7 @@ import {
   feeConfigPda,
   fundTradeEscrowIx,
   initializeFeeConfigIx,
+  updateFeeConfigIx,
   liquidityVaultPda,
   liquidityVaultTokensPda,
   openDisputeCaseIx,
@@ -318,6 +319,45 @@ describe("escrow instructions", () => {
       { pubkey: destinations.emergencyReserve, isSigner: false, isWritable: true },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);
+  });
+
+  it("updateFeeConfigIx takes treasuries as accounts, not params", () => {
+    const admin = fakePubkey(40);
+    const mint = fakePubkey(41);
+    const treasuries = {
+      devTreasury: fakePubkey(42),
+      ecosystemTreasury: fakePubkey(43),
+      infraTreasury: fakePubkey(44),
+      emergencyReserve: fakePubkey(45),
+    };
+    const ix = updateFeeConfigIx(admin, mint, treasuries, {
+      adListingFee: 7n,
+      disputeFilingFee: 9n,
+      settlementFeeBps: 15,
+      devTreasuryBps: 4_000,
+      ecosystemTreasuryBps: 3_000,
+      infraTreasuryBps: 2_000,
+      emergencyReserveBps: 1_000,
+      timeoutSecs: 1_800n,
+    });
+    expectDiscriminator(ix, [104, 184, 103, 242, 88, 151, 107, 20]);
+    const [feeConfig] = feeConfigPda();
+    expectAccounts(ix, [
+      { pubkey: admin, isSigner: true, isWritable: false },
+      { pubkey: feeConfig, isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: treasuries.devTreasury, isSigner: false, isWritable: false },
+      { pubkey: treasuries.ecosystemTreasury, isSigner: false, isWritable: false },
+      { pubkey: treasuries.infraTreasury, isSigner: false, isWritable: false },
+      { pubkey: treasuries.emergencyReserve, isSigner: false, isWritable: false },
+    ]);
+    // Treasury pubkeys must NOT appear in the data — they come from accounts.
+    expect(ix.data.length).toBe(8 + 8 + 8 + 2 + 2 + 2 + 2 + 2 + 8);
+    expect(ix.data.readBigUInt64LE(8)).toBe(7n);
+    expect(ix.data.readBigUInt64LE(16)).toBe(9n);
+    expect(ix.data.readUInt16LE(24)).toBe(15);
+    expect(ix.data.readUInt16LE(26)).toBe(4_000);
+    expect(ix.data.readBigInt64LE(34)).toBe(1_800n);
   });
 
   it("initializeFeeConfigIx", () => {

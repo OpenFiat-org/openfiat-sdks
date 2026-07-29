@@ -89,6 +89,71 @@ struct InitializeFeeConfigParams {
     timeout_secs: i64,
 }
 
+#[derive(BorshSerialize)]
+struct UpdateFeeConfigParams {
+    ad_listing_fee: u64,
+    dispute_filing_fee: u64,
+    settlement_fee_bps: u16,
+    dev_treasury_bps: u16,
+    ecosystem_treasury_bps: u16,
+    infra_treasury_bps: u16,
+    emergency_reserve_bps: u16,
+    timeout_secs: i64,
+}
+
+/// Corrects the singleton `FeeConfig` after initialization (admin-only).
+///
+/// Unlike `initialize_fee_config_ix`, the treasuries are **accounts**, not
+/// params: the program takes them as `TokenAccount`s constrained to `mint`,
+/// so a wallet address cannot be stored where a token account is required.
+/// That is deliberate — the devnet config was originally initialized with
+/// treasury owner wallets, which made every `release_escrow` unexecutable.
+#[allow(clippy::too_many_arguments)]
+pub fn update_fee_config_ix(
+    admin: &Pubkey,
+    mint: &Pubkey,
+    dev_treasury: &Pubkey,
+    ecosystem_treasury: &Pubkey,
+    infra_treasury: &Pubkey,
+    emergency_reserve: &Pubkey,
+    ad_listing_fee: u64,
+    dispute_filing_fee: u64,
+    settlement_fee_bps: u16,
+    dev_treasury_bps: u16,
+    ecosystem_treasury_bps: u16,
+    infra_treasury_bps: u16,
+    emergency_reserve_bps: u16,
+    timeout_secs: i64,
+) -> Instruction {
+    let (fee_config, _) = fee_config_pda();
+    let data = instruction_data(
+        [104, 184, 103, 242, 88, 151, 107, 20],
+        UpdateFeeConfigParams {
+            ad_listing_fee,
+            dispute_filing_fee,
+            settlement_fee_bps,
+            dev_treasury_bps,
+            ecosystem_treasury_bps,
+            infra_treasury_bps,
+            emergency_reserve_bps,
+            timeout_secs,
+        },
+    );
+    Instruction::new_with_bytes(
+        ESCROW_PROGRAM_ID,
+        &data,
+        vec![
+            AccountMeta::new_readonly(*admin, true),
+            AccountMeta::new(fee_config, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new_readonly(*dev_treasury, false),
+            AccountMeta::new_readonly(*ecosystem_treasury, false),
+            AccountMeta::new_readonly(*infra_treasury, false),
+            AccountMeta::new_readonly(*emergency_reserve, false),
+        ],
+    )
+}
+
 /// One-time singleton setup (admin-only). `dev_treasury`/`ecosystem_treasury`/
 /// `infra_treasury`/`emergency_reserve` are plain external SPL token
 /// accounts, not PDAs this program owns — the caller creates and
@@ -495,6 +560,32 @@ pub fn execute_dispute_outcome_ix(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn update_fee_config_ix_carries_treasuries_as_accounts_not_data() {
+        let admin = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let dev = Pubkey::new_unique();
+        let eco = Pubkey::new_unique();
+        let infra = Pubkey::new_unique();
+        let emergency = Pubkey::new_unique();
+        let ix = update_fee_config_ix(
+            &admin, &mint, &dev, &eco, &infra, &emergency, 7, 9, 15, 4_000, 3_000, 2_000, 1_000,
+            1_800,
+        );
+        assert_eq!(&ix.data[..8], &[104, 184, 103, 242, 88, 151, 107, 20]);
+        // 8 disc + 8 + 8 + 2*5 + 8 — no 32-byte pubkeys in the payload.
+        assert_eq!(ix.data.len(), 8 + 8 + 8 + 2 + 2 + 2 + 2 + 2 + 8);
+
+        let (fee_config, _) = fee_config_pda();
+        let keys: Vec<Pubkey> = ix.accounts.iter().map(|a| a.pubkey).collect();
+        assert_eq!(
+            keys,
+            vec![admin, fee_config, mint, dev, eco, infra, emergency]
+        );
+        assert!(ix.accounts[0].is_signer);
+        assert!(ix.accounts[1].is_writable);
+    }
 
     #[test]
     fn liquidity_vault_pda_uses_the_documented_seeds() {
