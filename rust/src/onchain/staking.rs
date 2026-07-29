@@ -97,6 +97,59 @@ pub fn initialize_staking_config_ix(
     )
 }
 
+/// Numeric parameters plus the two authority addresses. The slash
+/// destination is absent deliberately — the program takes it as an account
+/// so a wallet cannot be stored where a token account is required.
+#[derive(BorshSerialize)]
+struct UpdateStakingConfigParams {
+    min_stake_by_role: [u64; ROLE_COUNT],
+    unbonding_period_secs: i64,
+    slash_bps: u16,
+    slashing_authority: Pubkey,
+    rewards_authority: Pubkey,
+}
+
+/// Corrects the singleton config (admin-only).
+///
+/// `slash_destination` is passed as a token account rather than a key:
+/// the deployed config was initialized with a *wallet* there, which made
+/// every `slash` unexecutable because the program requires that key to
+/// deserialize as a `TokenAccount`. Passing the account lets the runtime
+/// reject the mistake instead of storing it.
+#[allow(clippy::too_many_arguments)]
+pub fn update_staking_config_ix(
+    admin: &Pubkey,
+    mint: &Pubkey,
+    slash_destination: &Pubkey,
+    min_stake_by_role: [u64; ROLE_COUNT],
+    unbonding_period_secs: i64,
+    slash_bps: u16,
+    slashing_authority: &Pubkey,
+    rewards_authority: &Pubkey,
+) -> Instruction {
+    let (staking_config, _) = staking_config_pda();
+    let data = instruction_data(
+        [214, 238, 91, 123, 207, 114, 9, 246],
+        UpdateStakingConfigParams {
+            min_stake_by_role,
+            unbonding_period_secs,
+            slash_bps,
+            slashing_authority: *slashing_authority,
+            rewards_authority: *rewards_authority,
+        },
+    );
+    Instruction::new_with_bytes(
+        STAKING_PROGRAM_ID,
+        &data,
+        vec![
+            AccountMeta::new_readonly(*admin, true),
+            AccountMeta::new(staking_config, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new_readonly(*slash_destination, false),
+        ],
+    )
+}
+
 pub fn initialize_stake_account_ix(owner: &Pubkey, role: Role) -> Instruction {
     let (stake_account, _) = stake_account_pda(owner, role);
     let data = instruction_data([184, 7, 155, 82, 149, 217, 185, 196], role);
@@ -264,6 +317,43 @@ mod tests {
             &STAKING_PROGRAM_ID,
         );
         assert_eq!(stake_account_pda(&owner, Role::Arbitrator).0, expected);
+    }
+
+    #[test]
+    fn update_staking_config_passes_the_slash_destination_as_an_account() {
+        // The deployed config stored a wallet as slash_destination, making
+        // every slash unexecutable: the program requires that key to
+        // deserialize as a token account. Taking it as an account is what
+        // lets the runtime reject the mistake, so the account list is the
+        // substance of this instruction.
+        let admin = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let slash_destination = Pubkey::new_unique();
+        let slashing_authority = Pubkey::new_unique();
+        let rewards_authority = Pubkey::new_unique();
+        let ix = update_staking_config_ix(
+            &admin,
+            &mint,
+            &slash_destination,
+            [1; ROLE_COUNT],
+            604_800,
+            1_000,
+            &slashing_authority,
+            &rewards_authority,
+        );
+        assert_eq!(ix.program_id, STAKING_PROGRAM_ID);
+        assert_eq!(&ix.data[..8], &[214, 238, 91, 123, 207, 114, 9, 246]);
+        let keys: Vec<Pubkey> = ix.accounts.iter().map(|a| a.pubkey).collect();
+        assert_eq!(
+            keys,
+            vec![admin, staking_config_pda().0, mint, slash_destination]
+        );
+        assert!(ix.accounts[0].is_signer, "only the admin signs");
+        assert!(
+            ix.accounts[1].is_writable,
+            "the config is what is rewritten"
+        );
+        assert!(ix.accounts.iter().skip(1).all(|a| !a.is_signer));
     }
 
     #[test]

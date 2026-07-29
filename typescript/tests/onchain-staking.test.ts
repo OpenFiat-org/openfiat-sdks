@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   claimRewardsIx,
   fundRewardsVaultIx,
+  updateStakingConfigIx,
   distributeRewardIx,
   initializeStakeAccountIx,
   initializeStakingConfigIx,
@@ -204,5 +205,40 @@ describe("staking instructions", () => {
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);
     expect(Array.from(ix.data.subarray(8, 16))).toEqual([0x90, 0xd0, 0x03, 0, 0, 0, 0, 0]);
+  });
+
+  it("updateStakingConfigIx takes the slash destination as an account, not a key", () => {
+    // The deployed config stored a *wallet* as slash_destination, which
+    // made every slash unexecutable: the program requires that key to
+    // deserialize as a token account. Passing the account is what lets the
+    // runtime reject the mistake rather than store it, so the account list
+    // is the substance of this instruction and worth pinning.
+    const admin = fakePubkey(70);
+    const slashDestination = fakePubkey(71);
+    const slashingAuthority = fakePubkey(72);
+    const rewardsAuthority = fakePubkey(73);
+    const ix = updateStakingConfigIx(admin, mint, slashDestination, {
+      minStakeByRole: [1n, 2n, 3n, 4n, 5n, 6n, 7n],
+      unbondingPeriodSecs: 604_800n,
+      slashBps: 1_000,
+      slashingAuthority,
+      rewardsAuthority,
+    });
+    expectDiscriminator(ix, [214, 238, 91, 123, 207, 114, 9, 246]);
+    expectAccounts(ix, [
+      { pubkey: admin, isSigner: true, isWritable: false },
+      { pubkey: stakingConfigPda()[0], isSigner: false, isWritable: true },
+      { pubkey: mint, isSigner: false, isWritable: false },
+      { pubkey: slashDestination, isSigner: false, isWritable: false },
+    ]);
+    // Authorities are trailing keys in the payload: 7 role minimums, an
+    // i64 and a u16 precede them.
+    const authoritiesAt = 8 + 7 * 8 + 8 + 2;
+    expect(Array.from(ix.data.subarray(authoritiesAt, authoritiesAt + 32))).toEqual(
+      Array.from(slashingAuthority.toBytes()),
+    );
+    expect(Array.from(ix.data.subarray(authoritiesAt + 32, authoritiesAt + 64))).toEqual(
+      Array.from(rewardsAuthority.toBytes()),
+    );
   });
 });

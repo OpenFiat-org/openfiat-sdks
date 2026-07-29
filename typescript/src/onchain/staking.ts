@@ -23,6 +23,7 @@ const DISCRIMINATORS = {
   fundRewardsVault: Uint8Array.from([157, 74, 89, 172, 187, 7, 119, 161]),
   distributeReward: Uint8Array.from([135, 65, 136, 143, 108, 234, 198, 46]),
   claimRewards: Uint8Array.from([4, 144, 132, 71, 116, 23, 151, 80]),
+  updateStakingConfig: Uint8Array.from([214, 238, 91, 123, 207, 114, 9, 246]),
 } as const;
 
 export function stakingConfigPda(): [PublicKey, number] {
@@ -95,6 +96,49 @@ export function initializeStakingConfigIx(
       u16LE(params.slashBps),
       params.slashingAuthority.toBytes(),
       params.slashDestination.toBytes(),
+      params.rewardsAuthority.toBytes(),
+    ),
+  });
+}
+
+export interface UpdateStakingConfigParams {
+  minStakeByRole: bigint[];
+  unbondingPeriodSecs: bigint;
+  slashBps: number;
+  slashingAuthority: PublicKey;
+  rewardsAuthority: PublicKey;
+}
+
+/**
+ * Corrects the singleton config (admin-only).
+ *
+ * `slashDestination` is an account rather than a parameter: the deployed
+ * config was initialized with a wallet there, which made every `slash`
+ * unexecutable because the program requires that key to deserialize as a
+ * token account. Passing the account lets the runtime reject the mistake
+ * rather than store it.
+ */
+export function updateStakingConfigIx(
+  admin: PublicKey,
+  mint: PublicKey,
+  slashDestination: PublicKey,
+  params: UpdateStakingConfigParams,
+): TransactionInstruction {
+  const [stakingConfig] = stakingConfigPda();
+  return new TransactionInstruction({
+    programId: STAKING_PROGRAM_ID,
+    keys: [
+      meta(admin, true, false),
+      meta(stakingConfig, false, true),
+      meta(mint, false, false),
+      meta(slashDestination, false, false),
+    ],
+    data: instructionData(
+      DISCRIMINATORS.updateStakingConfig,
+      ...minStakeByRoleBytes(params.minStakeByRole),
+      i64LE(params.unbondingPeriodSecs),
+      u16LE(params.slashBps),
+      params.slashingAuthority.toBytes(),
       params.rewardsAuthority.toBytes(),
     ),
   });
