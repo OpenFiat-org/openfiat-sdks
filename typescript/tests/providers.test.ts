@@ -28,7 +28,16 @@ function stubTransport(): { calls: CapturedCall[]; client: Client } {
       text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: null }),
     };
   });
-  return { calls, client: new Client({ endpoint: "http://localhost:7080" }) };
+  return { calls, client: new Client({ endpoint: "http://localhost:7080", timeoutMs: 30_000 }) };
+}
+
+/** Reads the single captured call, failing the test if none was made. Keeps
+ *  the assertions below free of non-null assertions under
+ *  `noUncheckedIndexedAccess`. */
+function onlyCall(calls: CapturedCall[]): CapturedCall {
+  const call = calls[0];
+  if (!call) throw new Error("expected exactly one captured RPC call, got none");
+  return call;
 }
 
 function decodePayload(call: CapturedCall): Record<string, unknown> {
@@ -53,9 +62,9 @@ describe("provider lifecycle methods", () => {
     await sendProviderHealthUpdate(client, update, keypair);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].method).toBe("sendProviderHealthUpdate");
+    expect(onlyCall(calls).method).toBe("sendProviderHealthUpdate");
 
-    const payload = decodePayload(calls[0]) as {
+    const payload = decodePayload(onlyCall(calls)) as {
       update: HealthUpdate;
       signature: number[];
     };
@@ -80,9 +89,9 @@ describe("provider lifecycle methods", () => {
     await sendProviderWithdraw(client, withdrawal, keypair);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].method).toBe("sendProviderWithdraw");
+    expect(onlyCall(calls).method).toBe("sendProviderWithdraw");
 
-    const payload = decodePayload(calls[0]) as {
+    const payload = decodePayload(onlyCall(calls)) as {
       withdrawal: Withdrawal;
       signature: number[];
     };
@@ -107,7 +116,7 @@ describe("provider lifecycle methods", () => {
     // The impostor names the real provider but can only sign with its own key.
     await sendProviderWithdraw(client, withdrawal, impostor);
 
-    const payload = decodePayload(calls[0]) as { signature: number[] };
+    const payload = decodePayload(onlyCall(calls)) as { signature: number[] };
     const signedBytes = new TextEncoder().encode(JSON.stringify(withdrawal));
     await expect(
       ed.verifyAsync(Uint8Array.from(payload.signature), signedBytes, owner.publicKey),

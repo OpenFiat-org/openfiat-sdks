@@ -7,7 +7,8 @@
 //! singletons; a `StakeAccount` is keyed by `(owner, role)`.
 
 use super::{
-    ROLE_COUNT, Role, STAKING_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, instruction_data, system_program_id,
+    ROLE_COUNT, Role, STAKING_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, instruction_data,
+    system_program_id,
 };
 use borsh::BorshSerialize;
 use solana_instruction::{AccountMeta, Instruction};
