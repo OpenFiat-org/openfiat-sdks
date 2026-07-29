@@ -178,10 +178,25 @@ describe.skipIf(!endpoint)("against a real node", () => {
       wallet: toBytes(walletId),
       wallet_public_key: toBytes(wallet.publicKey),
       enabled_categories: ["Trading"],
+      // Empty, but present. The node verifies the signature against a
+      // re-serialization of this struct, so omitting the field makes the
+      // bytes it hashes differ from the bytes signed here and the update
+      // is rejected as INVALID_SIGNATURE — not as a missing field.
+      destinations: [],
       timestamp: Date.now(),
     };
     await notifications.sendSubscriptionUpdate(client, update, wallet);
 
+    // A registered provider, correctly signing, reporting a delivery for
+    // a notification this node never dispatched. It is refused, and no
+    // receipt is written.
+    //
+    // This used to succeed, and that was the bug: a provider's report is
+    // self-attested, and its reputation and compensation depend on the
+    // volume it claims. Accepting an arbitrary id let any registered
+    // gateway manufacture evidence of work nobody asked it to do, or
+    // report on traffic it was never routed. A report must now correspond
+    // to a dispatch the receiving node witnessed itself.
     const report: DeliveryReport = {
       notification_id: "vitest-notification-1",
       service_id: serviceId,
@@ -192,10 +207,17 @@ describe.skipIf(!endpoint)("against a real node", () => {
       status: "Delivered",
       timestamp: Date.now(),
     };
-    await notifications.sendDeliveryReport(client, report, provider);
+    await expect(
+      notifications.sendDeliveryReport(client, report, provider),
+    ).rejects.toThrow(/RESOURCE_NOT_FOUND/);
 
     const receipts = await notifications.getDeliveryReceiptsByWallet(client, walletId);
-    expect(receipts).toHaveLength(1);
-    expect(receipts[0]?.status).toBe("Delivered");
+    expect(receipts).toHaveLength(0);
+
+    // The accepted path is deliberately not exercised here. It needs a
+    // real dispatch, which needs a subscription carrying a destination
+    // sealed to this gateway — and sealing is not exposed by this SDK
+    // yet. Faking it by relaxing the node's check would delete the
+    // property this test now protects.
   });
 });
