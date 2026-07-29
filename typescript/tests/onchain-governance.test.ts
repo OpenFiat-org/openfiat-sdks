@@ -9,8 +9,10 @@ import {
   depositVaultPda,
   governanceConfigPda,
   listWalletIx,
+  noAction,
   updateGovernanceConfigIx,
   initializeGovernanceConfigIx,
+  proposalActionPda,
   proposalPda,
   refundOrForfeitDepositIx,
   tallyAndFinalizeIx,
@@ -106,6 +108,7 @@ describe("governance instructions", () => {
       titleHash,
       summaryHash,
       604_800n,
+      noAction,
     );
     expectDiscriminator(ix, [132, 116, 68, 174, 216, 160, 198, 22]);
     const [governanceConfig] = governanceConfigPda();
@@ -119,6 +122,7 @@ describe("governance instructions", () => {
       { pubkey: depositVault, isSigner: false, isWritable: true },
       { pubkey: from, isSigner: false, isWritable: true },
       { pubkey: proposal, isSigner: false, isWritable: true },
+      { pubkey: proposalActionPda(proposal)[0], isSigner: false, isWritable: true },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: RENT_SYSVAR_ID, isSigner: false, isWritable: false },
@@ -246,7 +250,9 @@ describe("governance instructions", () => {
 });
 
 describe("ban list (OFS-7100 §12)", () => {
-  const admin = fakePubkey(80);
+  // No admin key here any more, deliberately: listing and delisting are
+  // executed from a passed proposal, so there is no privileged signer
+  // left for these tests to construct.
   const wallet = fakePubkey(81);
 
   it("banRecordPda is [\"ban\", wallet] under the governance program", () => {
@@ -262,34 +268,71 @@ describe("ban list (OFS-7100 §12)", () => {
     expect(pda.equals(expected)).toBe(true);
   });
 
-  it("listWalletIx", () => {
-    const evidenceHash = new Uint8Array(32).fill(9);
-    const ix = listWalletIx(admin, wallet, BanReason.Sanctions, evidenceHash);
+  it("listWalletIx carries no privileged signer, only a passed proposal", () => {
+    // The submitter is whoever pays the transaction, not an authority:
+    // the ban is authorized by `proposal` + `proposalAction`, so nothing
+    // here names `GovernanceConfig.admin`. Reason and evidence are not
+    // arguments — they were fixed when the proposal was created and
+    // cannot be chosen at execution time.
+    const submitter = fakePubkey(30);
+    const ix = listWalletIx(submitter, proposalId, wallet);
     expectDiscriminator(ix, [176, 149, 148, 11, 126, 182, 162, 248]);
+    const [proposal] = proposalPda(proposalId);
     expectAccounts(ix, [
-      { pubkey: admin, isSigner: true, isWritable: true },
+      { pubkey: submitter, isSigner: true, isWritable: true },
       { pubkey: governanceConfigPda()[0], isSigner: false, isWritable: false },
+      { pubkey: proposal, isSigner: false, isWritable: true },
+      { pubkey: proposalActionPda(proposal)[0], isSigner: false, isWritable: false },
       { pubkey: banRecordPda(wallet)[0], isSigner: false, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ]);
     expect(Array.from(ix.data.subarray(8, 40))).toEqual(Array.from(wallet.toBytes()));
-    expect(ix.data[40]).toBe(BanReason.Sanctions);
-    expect(Array.from(ix.data.subarray(41, 73))).toEqual(Array.from(evidenceHash));
   });
 
   it("delistWalletIx targets the same address listWalletIx created", () => {
     // §12.2 requires delisting to be possible at all; the two builders
     // agreeing on the address is what makes it possible in practice.
-    const ix = delistWalletIx(admin, wallet);
+    const submitter = fakePubkey(31);
+    const ix = delistWalletIx(submitter, proposalId, wallet);
     expectDiscriminator(ix, [40, 136, 186, 228, 254, 114, 109, 134]);
+    const [proposal] = proposalPda(proposalId);
     expectAccounts(ix, [
-      { pubkey: admin, isSigner: true, isWritable: true },
+      { pubkey: submitter, isSigner: true, isWritable: true },
       { pubkey: governanceConfigPda()[0], isSigner: false, isWritable: false },
+      { pubkey: proposal, isSigner: false, isWritable: true },
+      { pubkey: proposalActionPda(proposal)[0], isSigner: false, isWritable: false },
       { pubkey: banRecordPda(wallet)[0], isSigner: false, isWritable: true },
     ]);
     expect(Array.from(ix.data.subarray(8, 40))).toEqual(Array.from(wallet.toBytes()));
 
-    const listed = listWalletIx(admin, wallet, BanReason.Scam, new Uint8Array(32));
-    expect(ix.keys[2]?.pubkey.equals(listed.keys[2]!.pubkey)).toBe(true);
+    const listed = listWalletIx(submitter, proposalId, wallet);
+    expect(ix.keys[4]?.pubkey.equals(listed.keys[4]!.pubkey)).toBe(true);
+  });
+
+  it("a listWallet action binds the proposal to one exact wallet", () => {
+    // The replay guard, at the encoding layer: the action encoded into a
+    // proposal names its target, so a proposal created to ban one wallet
+    // cannot be re-pointed at another when it is executed.
+    const evidenceHash = new Uint8Array(32).fill(9);
+    const other = fakePubkey(32);
+    const ix = createProposalIx(
+      fakePubkey(20),
+      mint,
+      fakePubkey(21),
+      proposalId,
+      ProposalCategory.Standards,
+      new Uint8Array(32).fill(1),
+      new Uint8Array(32).fill(2),
+      604_800n,
+      { kind: "listWallet", wallet, reason: BanReason.Sanctions, evidenceHash },
+    );
+    // The action trails the fixed prefix: discriminator(8) + id(8) +
+    // category(1) + titleHash(32) + summaryHash(32) + votingPeriod(8).
+    const encoded = Array.from(ix.data.subarray(89));
+    expect(encoded[0]).toBe(1); // listWallet variant tag
+    expect(encoded.slice(1, 33)).toEqual(Array.from(wallet.toBytes()));
+    expect(encoded.slice(1, 33)).not.toEqual(Array.from(other.toBytes()));
+    expect(encoded[33]).toBe(BanReason.Sanctions);
+    expect(encoded.slice(34, 66)).toEqual(Array.from(evidenceHash));
   });
 });
