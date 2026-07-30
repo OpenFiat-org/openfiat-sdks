@@ -1,4 +1,31 @@
 //! Reservation methods (OFS-2200).
+//!
+//! # `send_reservation_request` is refused by a current node
+//!
+//! A reservation now records the price it was made at: `ReservationRequest`
+//! gained `agreed_price` (fiat per unit of asset, as the requester
+//! understood it when they signed) and `agreed_mid` (the oracle reading a
+//! floating price was derived from, `None` for a fixed advertisement). A
+//! floating advertisement publishes a formula rather than a price, and
+//! without those fields a taker agreed to a number the protocol recorded
+//! nowhere — a merchant asserting a different rate afterwards was arguing
+//! against nothing. A request arriving without a price is refused now, not
+//! silently priced by the node, because substituting its own number would
+//! bind the taker to a figure they never signed.
+//!
+//! Nothing here can supply them. [`ReservationRequest`] is
+//! `openfiat-reservations`', imported so this SDK and a real node cannot
+//! describe different wire formats, and `rust/Cargo.toml` pins
+//! `openfiat-core` to a revision that predates the fields — so there is no
+//! `agreed_price` to set, and every reservation this SDK builds is a
+//! reservation the node rejects. Bumping the pin is the whole fix and is
+//! its own piece of work; these methods correct themselves the moment it
+//! lands, and the construction sites in `examples/trading_bot.rs`,
+//! `tests/live_node.rs` and `tests/conformance_trade_lifecycle.rs` become
+//! compile errors that name the missing field.
+//!
+//! The TypeScript SDK transcribes its shapes rather than importing them,
+//! carries both fields, and is proved against a node at HEAD.
 
 use crate::client::{Client, IdParams};
 use crate::error::Result;

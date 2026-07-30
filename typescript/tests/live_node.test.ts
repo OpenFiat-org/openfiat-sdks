@@ -381,6 +381,90 @@ describe.skipIf(!endpoint)("against a real node", () => {
     await expect(trade.getMyTrades(client, merchant)).resolves.toEqual([]);
   });
 
+  // The order book read, against a real node. The stubbed tests prove the
+  // SDK sends the right request and hands the cursor back untouched; only
+  // a node can prove the other half — that the narrowing actually happens
+  // there, and that following its cursor across pages returns every
+  // matching row exactly once.
+  it("narrows and pages the order book on the node", async () => {
+    const merchant = await generateKeypair();
+    const merchantId = toBytes(peerIdFromPublicKey(merchant.publicKey));
+    // A currency no other test in this file publishes against, so the
+    // assertions below are about these three advertisements and not about
+    // whatever else this shared node happens to be holding.
+    const currency = "UGX";
+    const ids = ["vitest-page-ad-1", "vitest-page-ad-2", "vitest-page-ad-3"];
+
+    for (const id of ids) {
+      await advertisements.sendAdvertisementCreate(
+        client,
+        {
+          id,
+          merchant: merchantId,
+          merchant_public_key: toBytes(merchant.publicKey),
+          asset_mint: USDT_MINT,
+          direction: "Sell",
+          fiat_currency: currency,
+          min_trade: { base_units: 1_000, decimals: 2 },
+          max_trade: { base_units: 50_000, decimals: 2 },
+          initial_liquidity: { base_units: 200_000, decimals: 2 },
+          pricing: { Fixed: { price: { base_units: 12_950, decimals: 2 } } },
+          payment_methods: ["M-Pesa"],
+          timestamp: Date.now(),
+        },
+        merchant,
+      );
+    }
+
+    // The filter is honoured by the node, not by this SDK: every other
+    // advertisement these tests published is quoted in KES and none of
+    // them come back.
+    const filter = { fiat_currency: currency };
+    const first = await advertisements.getAdvertisements(client, { filter, page: { limit: 2 } });
+    expect(first.advertisements.map((a) => a.fiat_currency)).toEqual([currency, currency]);
+    expect(first.next_cursor).not.toBeNull();
+
+    // The cursor goes back exactly as it arrived — assigned across, not
+    // converted, and certainly not derived from the last row. That
+    // derivation is the disagreement about ordering the cursor exists to
+    // make impossible.
+    const second = await advertisements.getAdvertisements(client, {
+      filter,
+      page: { limit: 2, after: first.next_cursor },
+    });
+    expect(second.advertisements).toHaveLength(1);
+    expect(second.next_cursor).toBeNull();
+
+    const walked = [...first.advertisements, ...second.advertisements].map((a) => a.id);
+    expect([...walked].sort()).toEqual([...ids].sort());
+
+    // And the same walk driven by the helper, which must reach the same
+    // set — one row twice or one row missing is exactly the failure mode
+    // an offset-based page has and this one does not.
+    const iterated: string[] = [];
+    for await (const advertisement of advertisements.eachAdvertisement(client, {
+      filter,
+      page: { limit: 2 },
+    })) {
+      iterated.push(advertisement.id);
+    }
+    expect(iterated.sort()).toEqual([...ids].sort());
+
+    // An amount inside these advertisements' limits finds them; the same
+    // number at another scale finds nothing at all, rather than being
+    // rescaled into a question the caller did not ask. A caller who sends
+    // "50" against a book quoted in cents gets an empty book, and this is
+    // the reason.
+    const inRange = await advertisements.getAdvertisements(client, {
+      filter: { ...filter, amount: { base_units: 5_000, decimals: 2 } },
+    });
+    expect(inRange.advertisements.length).toBe(3);
+    const wrongScale = await advertisements.getAdvertisements(client, {
+      filter: { ...filter, amount: { base_units: 50, decimals: 0 } },
+    });
+    expect(wrongScale.advertisements).toEqual([]);
+  });
+
   it("refuses a wallet proof signed by someone else's key", async () => {
     const bot = await generateKeypair();
     const stranger = await generateKeypair();

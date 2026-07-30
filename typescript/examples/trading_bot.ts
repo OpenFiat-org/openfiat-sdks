@@ -51,8 +51,11 @@ async function main() {
   const adId = await advertisements.sendAdvertisementCreate(client, create, merchant);
   console.log(`advertisement live: ${adId}`);
 
-  // A real bot would instead call `advertisements.getAdvertisements(client)`
-  // and pick one matching its own strategy — reservation just needs the ID.
+  // A real bot would instead call `advertisements.getAdvertisements(client, {
+  // filter: { ... } })` with the mint, currency, side and size it trades —
+  // and follow `next_cursor`, or iterate with
+  // `advertisements.eachAdvertisement`, if it wants more than one page.
+  // Reservation just needs the ID.
   console.log("reserving against it as a separate bot identity...");
   const request: ReservationRequest = {
     id: "example-trading-bot-reservation-ts",

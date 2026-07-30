@@ -365,6 +365,108 @@ export interface AdvertisementView extends Advertisement {
   asset_symbol: string | null;
 }
 
+/**
+ * What a trader actually chooses by, sent to the node rather than applied
+ * here.
+ *
+ * Every field is optional and absent means "no constraint", so `{}` is the
+ * whole active book. Narrowing belongs in the request and not in the
+ * caller: the node would otherwise serialize every advertisement on the
+ * network on every request, and filtering a page after it arrives shows a
+ * short page and — worse — advances the cursor past rows the caller
+ * discarded but never saw. There is deliberately no client-side filter
+ * helper in this SDK for that reason.
+ *
+ * Every field is `?: T | undefined` rather than plain `?: T`, and against
+ * this package's `exactOptionalPropertyTypes` that is a real difference:
+ * `JSON.stringify` drops an explicit `undefined` and an absent key alike,
+ * so the two produce the identical request, and a caller threading an
+ * optional value through a variable should not have to branch to say
+ * "no constraint".
+ */
+export interface AdvertisementFilter {
+  /** The token being traded, by mint address — see {@link MintAddress}.
+   *  Matched exactly; a mint is an identity, not a label. */
+  asset_mint?: MintAddress | undefined;
+  /** Matched case-insensitively: a currency code is a code, and `"kes"`
+   *  finds the same offers as `"KES"`. */
+  fiat_currency?: string | undefined;
+  direction?: Direction | undefined;
+  /** Matches an advertisement that lists this among possibly several,
+   *  case-insensitively. */
+  payment_method?: string | undefined;
+  /**
+   * Only advertisements that could take a trade of this size — inside
+   * `min_trade`/`max_trade` and within remaining liquidity. A buyer with
+   * 50 USDC does not want to read about offers starting at 500.
+   *
+   * **Scale-sensitive, on purpose.** The comparison happens in base units
+   * at the advertisement's own scale, and an amount whose `decimals`
+   * differ from the advertisement's matches *nothing* rather than being
+   * rescaled — `{ base_units: 50, decimals: 0 }` against a book quoted at
+   * 6 decimals returns an empty page, not the offers around 50. 10.000000
+   * and 10.00 are the same value written two ways and guessing which was
+   * meant answers a question the caller did not put. So send the same
+   * `decimals` the advertisements use; an unexpectedly empty result here
+   * is almost always this.
+   */
+  amount?: Amount | undefined;
+  /**
+   * Defaults to `"Active"`. A disabled or deleted advertisement cannot be
+   * traded against, so returning one by default would be offering
+   * something that is not on offer; naming a status explicitly is a
+   * merchant reviewing their own book.
+   */
+  status?: AdvertisementStatus | undefined;
+}
+
+/** Where to resume from, and how much to take. */
+export interface AdvertisementPageRequest {
+  /**
+   * The `next_cursor` of the previous page, passed back **verbatim**.
+   *
+   * It is an advertisement id, but do not build one from the last row you
+   * received: that requires knowing the node's ordering, and an ordering
+   * the two sides disagree about is exactly how a page gets skipped. The
+   * cursor travels beside the rows so that neither side has to guess.
+   *
+   * `null` is accepted alongside `undefined` and means the same thing —
+   * start at the beginning — so the last page's `next_cursor` can be
+   * assigned straight across without being converted first. "Verbatim"
+   * should not require the caller to translate a `null` into an absent
+   * key, because that translation is the first step towards deriving the
+   * value instead of carrying it.
+   */
+  after?: string | null | undefined;
+  /** Clamped by the node, which owns both the ceiling and the default —
+   *  so ask for what you want to display and read the page you get back
+   *  rather than assuming the size you asked for. */
+  limit?: number | undefined;
+}
+
+/** `getAdvertisements`' parameters. Both halves are optional, so `{}` is
+ *  the first page of the whole active book. */
+export interface AdvertisementQuery {
+  filter?: AdvertisementFilter | undefined;
+  page?: AdvertisementPageRequest | undefined;
+}
+
+/**
+ * One page of the order book.
+ *
+ * This method used to answer with a bare array. It returned *every*
+ * advertisement on the network with no parameters, which is a response
+ * that grows without bound and a book a buyer cannot search — so code
+ * reading `result.length` was already reading something that could not
+ * survive real volume, and now reads `undefined`.
+ */
+export interface AdvertisementPage {
+  advertisements: AdvertisementView[];
+  /** Pass back as `page.after` to continue. `null` means this was the
+   *  last page. */
+  next_cursor: string | null;
+}
+
 // --- Reservations (OFS-2200) ---
 
 export type ReservationState = "EscrowLocked" | "Cancelled" | "Expired";

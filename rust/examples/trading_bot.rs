@@ -6,6 +6,10 @@
 //! default it targets `http://localhost:7080` — start one with
 //! `CLI_HTTP_ADDR=127.0.0.1:7080 cargo run -p openfiat-cli` from
 //! `openfiat-core`.
+//!
+//! The reservation below is refused by a current node: it carries no
+//! `agreed_price`, and cannot, for the reason
+//! [`openfiat_sdk::methods::reservations`]' module doc gives.
 
 use openfiat_advertisements::AdvertisementId;
 use openfiat_advertisements::events::AdvertisementCreate;
@@ -56,8 +60,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ad_id = client.send_advertisement_create(create, &merchant).await?;
     println!("advertisement live: {}", ad_id.as_str());
 
-    // A real bot would instead call `client.get_advertisements()` and pick
-    // one matching its own strategy — reservation just needs the ID.
+    // A real bot would instead call `client.get_advertisements(&query)`
+    // with an `AdvertisementFilter` describing its strategy — the mint,
+    // the currency, the side and the size it trades — and follow
+    // `next_cursor` if it wants more than the first page. Reservation just
+    // needs the ID.
     println!("reserving against it as a separate bot identity...");
     let request = ReservationRequest {
         id: ReservationId::new("example-trading-bot-reservation"),
