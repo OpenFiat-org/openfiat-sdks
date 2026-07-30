@@ -1,0 +1,21 @@
+// Used only by `build:types`, never by `typecheck`.
+//
+// tsup builds declarations through rollup-plugin-dts, and hardcodes
+// `baseUrl: compilerOptions.baseUrl || "."` into the options it hands that
+// plugin (tsup 8.5.1, dist/rollup.js). TypeScript 6 deprecated `baseUrl` and
+// reports setting it as error TS5101, so the declaration build fails on an
+// option this package never asked for and cannot unset. tsup has no newer
+// release that drops it.
+//
+// Scoping the acknowledgement to this file keeps `tsc --noEmit` strict about
+// deprecated options in our own configuration: if we ever set a deprecated
+// option ourselves, the typecheck still fails on it.
+//
+// This expires with TypeScript 7, which removes `baseUrl` outright and will
+// reject "6.0" as a value here. At that point tsup must be fixed or replaced.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0"
+  }
+}
