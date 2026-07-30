@@ -23,6 +23,7 @@ import {
   type AdvertisementCreate,
   type DeliveryReport,
   type OraclePublish,
+  type PricingModel,
   type Registration,
   type ReservationRequest,
   type SubscriptionUpdate,
@@ -148,6 +149,71 @@ describe.skipIf(!endpoint)("against a real node", () => {
     expect(reservation?.state).toBe("EscrowLocked");
   });
 
+  // The rest of the merchant's own lifecycle, against a real node. The
+  // builders for these two were added with only a capturing mock behind
+  // them — that proves the bytes are right, but not that a node accepts
+  // them, applies them, and refuses the forgery. This is the half a mock
+  // structurally cannot cover.
+  it("reprices and then retires a published advertisement", async () => {
+    const merchant = await generateKeypair();
+    const merchantId = toBytes(peerIdFromPublicKey(merchant.publicKey));
+
+    const create: AdvertisementCreate = {
+      id: "vitest-lifecycle-ad",
+      merchant: merchantId,
+      merchant_public_key: toBytes(merchant.publicKey),
+      asset: "USDT",
+      direction: "Sell",
+      fiat_currency: "KES",
+      min_trade: { base_units: 1_000, decimals: 2 },
+      max_trade: { base_units: 50_000, decimals: 2 },
+      initial_liquidity: { base_units: 200_000, decimals: 2 },
+      pricing: { Fixed: { price: { base_units: 12_950, decimals: 2 } } },
+      payment_methods: ["M-Pesa"],
+      timestamp: Date.now(),
+    };
+    const adId = await advertisements.sendAdvertisementCreate(client, create, merchant);
+
+    const repriced: PricingModel = { Fixed: { price: { base_units: 13_100, decimals: 2 } } };
+    await advertisements.sendAdvertisementPriceUpdate(
+      client,
+      { id: adId, merchant: merchantId, pricing: repriced, timestamp: Date.now() },
+      merchant,
+    );
+    // Repricing keeps the record's identity — same ID, and so every
+    // reservation, dispute and reputation entry pointing at it survives.
+    // That is the whole reason this is not "disable and recreate".
+    const updated = await advertisements.getAdvertisement(client, adId);
+    expect(updated?.id).toBe(adId);
+    expect(updated?.pricing).toEqual(repriced);
+    expect(updated?.status).toBe("Active");
+
+    // Another identity naming this merchant is refused: the node checks the
+    // signature against the key on the advertisement, not against the
+    // merchant the event claims to be from.
+    const impostor = await generateKeypair();
+    await expect(
+      advertisements.sendAdvertisementDisable(
+        client,
+        { id: adId, merchant: merchantId, timestamp: Date.now() },
+        impostor,
+      ),
+    ).rejects.toThrow();
+    expect((await advertisements.getAdvertisement(client, adId))?.status).toBe("Active");
+
+    await advertisements.sendAdvertisementDisable(
+      client,
+      { id: adId, merchant: merchantId, timestamp: Date.now() },
+      merchant,
+    );
+    // Disabled, not deleted: still readable, still carrying the price the
+    // update put there, so anything already referencing it resolves against
+    // a record that exists.
+    const disabled = await advertisements.getAdvertisement(client, adId);
+    expect(disabled?.status).toBe("Disabled");
+    expect(disabled?.pricing).toEqual(repriced);
+  });
+
   // The same flow examples/notification_provider.ts walks through.
   it("reports a notification provider's delivery back for the subscribed wallet", async () => {
     const provider = await generateKeypair();
@@ -163,7 +229,14 @@ describe.skipIf(!endpoint)("against a real node", () => {
         service_type: { Notifications: "Webhook" },
         provider: toBytes(providerId),
         provider_public_key: toBytes(provider.publicKey),
-        endpoints: ["https://example.invalid/webhook"],
+        // Loopback, not `example.invalid`. A node now refuses to register
+        // an endpoint in an RFC 2606/6761 reserved domain at all: a signed
+        // registration replicates to every node and is offered to users as
+        // live infrastructure, so an address that can never resolve is not
+        // a harmless placeholder — it is a fabricated service nobody can
+        // delete. `.localhost` stays allowed, because it resolves and means
+        // exactly what it says.
+        endpoints: ["http://localhost:7080/webhook"],
         supported_ofs: [1500, 6000],
         region: null,
         capabilities: ["Webhook"],

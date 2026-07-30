@@ -230,11 +230,24 @@ export interface ProviderEarnings {
 
 export type Direction = "Buy" | "Sell";
 
+/**
+ * `premium_bps` is signed on purpose — a merchant competing for flow may
+ * quote below mid — and `price_decimals` is the precision the resolved
+ * fiat price is quoted in (2 for KES/NGN/USD, 0 for JPY).
+ *
+ * Nothing else on an advertisement carries that precision: `min_trade`,
+ * `max_trade` and `available_liquidity` are all denominated in the asset,
+ * and a floating ad has no fixed price to borrow it from — which is why
+ * the merchant declares it rather than the node inferring it from
+ * `fiat_currency` off a hardcoded table that silently mis-rounds every
+ * currency missing from it. Omitting the field here fails the node's
+ * decode of the whole event, not just of the pricing.
+ */
 export type PricingModel =
   | { Fixed: { price: Amount } }
-  | { Floating: { oracle_provider: string; premium_bps: number } };
+  | { Floating: { oracle_provider: string; premium_bps: number; price_decimals: number } };
 
-export type AdvertisementStatus = "Active" | "Disabled" | "Vacation";
+export type AdvertisementStatus = "Active" | "Disabled" | "Vacation" | "Deleted";
 
 export interface AdvertisementCreate {
   id: string;

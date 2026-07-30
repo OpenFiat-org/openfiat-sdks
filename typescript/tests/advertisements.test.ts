@@ -141,4 +141,34 @@ describe("advertisement lifecycle methods", () => {
       ed.verifyAsync(Uint8Array.from(payload.signature), signedBytes, owner.publicKey),
     ).resolves.toBe(false);
   });
+
+  /**
+   * Switching a listing onto a floating model is the case this SDK could
+   * not express at all: `PricingModel.Floating` was missing
+   * `price_decimals`, so the payload decoded into nothing on the node and
+   * came back as an invalid-params failure naming the event rather than the
+   * field. Pinned here in the shape a node re-serializes and hashes, since
+   * nothing in the fixed case hints the field exists.
+   */
+  it("carries price_decimals when repricing onto a floating model", async () => {
+    const { calls, client } = stubTransport();
+    const keypair = await generateKeypair();
+    const update: AdvertisementPriceUpdate = {
+      id: "ad-1",
+      merchant: toBytes(peerIdFromPublicKey(keypair.publicKey)),
+      pricing: { Floating: { oracle_provider: "any", premium_bps: 150, price_decimals: 2 } },
+      timestamp: 1_785_326_039_513,
+    };
+
+    await sendAdvertisementPriceUpdate(client, update, keypair);
+
+    const payload = decodePayload(onlyCall(calls)) as { update: AdvertisementPriceUpdate };
+    expect(payload.update.pricing).toEqual({
+      Floating: { oracle_provider: "any", premium_bps: 150, price_decimals: 2 },
+    });
+    // `pricing` sits between `merchant` and `timestamp`, and the model is
+    // externally tagged, because that is how `serde` writes the enum the
+    // node reads back. The signature covers these bytes in this order.
+    expect(Object.keys(payload.update)).toEqual(["id", "merchant", "pricing", "timestamp"]);
+  });
 });
