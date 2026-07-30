@@ -1,8 +1,9 @@
 //! The wallet-proof trade reads, asserted at the wire.
 //!
-//! `getMySettlements`, `getMyReservations` and `getMyDisputes` are gated
-//! by a signature over `"<domain>:<subject>:<nonce>"`, and the domain is
-//! a bare string constant transcribed from `openfiat-rpc`. Get one
+//! `getMySettlements`, `getMyReservations`, `getMyDisputes` and
+//! `getMyTrades` are gated by a signature over
+//! `"<domain>:<subject>:<nonce>"`, and the domain is a bare string
+//! constant transcribed from `openfiat-rpc`. Get one
 //! character of it wrong and the node answers with a signature failure
 //! that never mentions domains, on a surface whose whole purpose is that
 //! it refuses rather than explains. Nothing but an assertion on the exact
@@ -21,7 +22,7 @@ use axum::routing::post;
 use axum::{Json, Router};
 use base64::Engine;
 use openfiat_network::identity::peer_id_from_public_key;
-use openfiat_sdk::methods::redaction::PublicSettlement;
+use openfiat_sdk::methods::redaction::{PublicSettlement, PublicTrade, TradeStatus};
 use openfiat_sdk::wallet::Keypair;
 use openfiat_sdk::{Client, ClientConfig};
 use serde_json::Value;
@@ -184,7 +185,20 @@ async fn my_disputes_is_signed_under_the_disputes_domain() {
     assert_proof_exchange(&captured, &keypair, "getMyDisputes", "openfiat-my-disputes");
 }
 
-/// The property the three domains exist for. If they were ever collapsed
+#[tokio::test]
+async fn my_trades_is_signed_under_the_trades_domain() {
+    let (endpoint, captured) = spawn_capturing_server().await;
+    let keypair = Keypair::generate();
+
+    client_for(endpoint)
+        .get_my_trades(&keypair)
+        .await
+        .expect("the capturing server answers an empty list");
+
+    assert_proof_exchange(&captured, &keypair, "getMyTrades", "openfiat-my-trades");
+}
+
+/// The property the four domains exist for. If they were ever collapsed
 /// into one constant, every test above would still pass.
 #[tokio::test]
 async fn a_proof_for_one_surface_does_not_verify_on_another() {
@@ -208,7 +222,11 @@ async fn a_proof_for_one_surface_does_not_verify_on_another() {
         .try_into()
         .unwrap();
 
-    for other in ["openfiat-my-reservations", "openfiat-my-disputes"] {
+    for other in [
+        "openfiat-my-reservations",
+        "openfiat-my-disputes",
+        "openfiat-my-trades",
+    ] {
         let elsewhere = format!("{other}:{wallet}:{NONCE}").into_bytes();
         assert!(
             openfiat_crypto::verify(
@@ -243,4 +261,77 @@ fn a_public_settlement_decodes_without_any_party_field() {
     let settlement: PublicSettlement =
         serde_json::from_value(redacted).expect("the public read's own payload must decode");
     assert_eq!(settlement.escrow_release_signature.as_deref(), Some("sig"));
+}
+
+/// The trade join decodes from what a node actually sends, with no party
+/// anywhere in it.
+///
+/// A trade exists as soon as its reservation does, so `settlement` is
+/// null far more often than not — a shape that required it would turn
+/// every pre-settlement read into a decode error. Asserted with the
+/// payload written out by hand rather than round-tripped through the
+/// SDK's own type, which would agree with any field this transcription
+/// got wrong.
+#[test]
+fn a_public_trade_decodes_before_any_settlement_exists() {
+    let redacted = serde_json::json!({
+        "reservation": {
+            "id": "r-1",
+            "advertisement_id": "ad-1",
+            "amount": { "base_units": 5_000u64, "decimals": 2 },
+            "state": "EscrowLocked",
+            "requested_at": 1_000u64,
+            "updated_at": 1_000u64,
+            "expires_at": 2_000u64,
+        },
+        "settlement": null,
+        "status": "EscrowLocked",
+    });
+
+    let trade: PublicTrade =
+        serde_json::from_value(redacted).expect("the public read's own payload must decode");
+    assert_eq!(trade.status, TradeStatus::EscrowLocked);
+    assert!(trade.settlement.is_none());
+}
+
+/// Once a settlement exists the join carries both halves, and both are
+/// still redacted — the whole point of composing the public shapes rather
+/// than redacting a second time.
+#[test]
+fn a_settled_public_trade_carries_two_redacted_halves() {
+    let redacted = serde_json::json!({
+        "reservation": {
+            "id": "r-1",
+            "advertisement_id": "ad-1",
+            "amount": { "base_units": 5_000u64, "decimals": 2 },
+            "state": "EscrowLocked",
+            "requested_at": 1_000u64,
+            "updated_at": 1_000u64,
+            "expires_at": 2_000u64,
+        },
+        "settlement": {
+            "id": "s-1",
+            "reservation_id": "r-1",
+            "amount": { "base_units": 5_000u64, "decimals": 2 },
+            "state": "Completed",
+            "escrow_release_signature": "sig",
+            "payment_submitted_at": null,
+            "merchant_responded_at": null,
+            "payment_discrepancy": null,
+            "created_at": 1_000u64,
+            "updated_at": 2_000u64,
+        },
+        "status": "Completed",
+    });
+
+    let trade: PublicTrade = serde_json::from_value(redacted).expect("a settled trade must decode");
+    assert_eq!(trade.status, TradeStatus::Completed);
+    assert_eq!(
+        trade
+            .settlement
+            .expect("the settlement half is present")
+            .escrow_release_signature
+            .as_deref(),
+        Some("sig")
+    );
 }

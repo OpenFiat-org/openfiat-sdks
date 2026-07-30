@@ -23,6 +23,7 @@ import {
   settlement,
   sign,
   toBytes,
+  trade,
   wallet as walletAuth,
   type AdvertisementCreate,
   type DeliveryReport,
@@ -34,6 +35,22 @@ import {
 } from "../src/index.js";
 
 const endpoint = process.env.OPENFIAT_NODE_URL;
+
+/**
+ * The devnet USDT mint, which the node's display table names — so an
+ * advertisement created with it comes back carrying `asset_symbol:
+ * "USDT"` and the assertions below can tell resolution working from
+ * resolution silently returning null for everything.
+ */
+const USDT_MINT = "C4rSGhdxWhSFQuFcAxQti1JvBxriwHJoHtJjfhs5p24Y";
+
+/**
+ * A real address (base58, 32 bytes) that no build names: Circle's own
+ * devnet USDC, which this deployment deliberately does not settle in. It
+ * is here to prove the null case is an address with no nickname rather
+ * than a rejection.
+ */
+const UNNAMED_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 
 describe.skipIf(!endpoint)("against a real node", () => {
   const client = new Client({ endpoint: endpoint ?? "", timeoutMs: 10_000 });
@@ -125,7 +142,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
       id: "vitest-trading-bot-ad",
       merchant: toBytes(peerIdFromPublicKey(merchant.publicKey)),
       merchant_public_key: toBytes(merchant.publicKey),
-      asset: "USDT",
+      asset_mint: USDT_MINT,
       direction: "Sell",
       fiat_currency: "KES",
       min_trade: { base_units: 1_000, decimals: 2 },
@@ -144,6 +161,14 @@ describe.skipIf(!endpoint)("against a real node", () => {
       requester: toBytes(peerIdFromPublicKey(bot.publicKey)),
       requester_public_key: toBytes(bot.publicKey),
       amount: { base_units: 5_000, decimals: 2 },
+      // The advertised fixed price, exactly. A reservation records the
+      // number the taker agreed to, and the node refuses one that does not
+      // follow from what the merchant signed rather than quietly
+      // substituting its own.
+      agreed_price: { base_units: 12_950, decimals: 2 },
+      // Fixed pricing derives from no oracle, and a mid supplied here
+      // would be refused alongside it.
+      agreed_mid: null,
       timestamp: Date.now(),
     };
     const reservationId = await reservations.sendReservationRequest(client, request, bot);
@@ -151,6 +176,64 @@ describe.skipIf(!endpoint)("against a real node", () => {
 
     const reservation = await reservations.getReservation(client, reservationId);
     expect(reservation?.state).toBe("EscrowLocked");
+  });
+
+  // What replaced `asset: "USDT"`. The record carries the mint the buyer
+  // will actually be paid in, and the name comes back from the node
+  // beside it — never from the merchant, and never from a table in this
+  // SDK, which is why there is no assertion here that any local lookup
+  // agrees with anything.
+  it("names an advertisement's asset by mint and reads the symbol back from the node", async () => {
+    const merchant = await generateKeypair();
+    const merchantId = toBytes(peerIdFromPublicKey(merchant.publicKey));
+
+    const create = (id: string, mint: string): AdvertisementCreate => ({
+      id,
+      merchant: merchantId,
+      merchant_public_key: toBytes(merchant.publicKey),
+      asset_mint: mint,
+      direction: "Sell",
+      fiat_currency: "KES",
+      min_trade: { base_units: 1_000, decimals: 2 },
+      max_trade: { base_units: 50_000, decimals: 2 },
+      initial_liquidity: { base_units: 200_000, decimals: 2 },
+      pricing: { Fixed: { price: { base_units: 12_950, decimals: 2 } } },
+      payment_methods: ["M-Pesa"],
+      timestamp: Date.now(),
+    });
+
+    const namedId = await advertisements.sendAdvertisementCreate(
+      client,
+      create("vitest-mint-named-ad", USDT_MINT),
+      merchant,
+    );
+    const named = await advertisements.getAdvertisement(client, namedId);
+    expect(named?.asset_mint).toBe(USDT_MINT);
+    expect(named?.asset_symbol).toBe("USDT");
+
+    // An address nobody has named is not an error. It comes back whole,
+    // with no nickname, and a caller shows the address — which is
+    // unhelpful and true rather than helpful and false.
+    const unnamedId = await advertisements.sendAdvertisementCreate(
+      client,
+      create("vitest-mint-unnamed-ad", UNNAMED_MINT),
+      merchant,
+    );
+    const unnamed = await advertisements.getAdvertisement(client, unnamedId);
+    expect(unnamed?.asset_mint).toBe(UNNAMED_MINT);
+    expect(unnamed?.asset_symbol).toBeNull();
+
+    // A ticker is not an address, and the node refuses it at decode
+    // rather than storing it and letting a buyer read it. This is the
+    // exact value the old `asset` field accepted from anyone.
+    await expect(
+      advertisements.sendAdvertisementCreate(
+        client,
+        create("vitest-mint-ticker-ad", "USDT"),
+        merchant,
+      ),
+    ).rejects.toThrow();
+    expect(await advertisements.getAdvertisement(client, "vitest-mint-ticker-ad")).toBeNull();
   });
 
   // The trade graph, against a real node: the public reads no longer name
@@ -167,7 +250,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
       id: "vitest-redaction-ad",
       merchant: toBytes(peerIdFromPublicKey(merchant.publicKey)),
       merchant_public_key: toBytes(merchant.publicKey),
-      asset: "USDT",
+      asset_mint: USDT_MINT,
       direction: "Sell",
       fiat_currency: "KES",
       min_trade: { base_units: 1_000, decimals: 2 },
@@ -185,6 +268,14 @@ describe.skipIf(!endpoint)("against a real node", () => {
       requester: botId,
       requester_public_key: toBytes(bot.publicKey),
       amount: { base_units: 5_000, decimals: 2 },
+      // The advertised fixed price, exactly. A reservation records the
+      // number the taker agreed to, and the node refuses one that does not
+      // follow from what the merchant signed rather than quietly
+      // substituting its own.
+      agreed_price: { base_units: 12_950, decimals: 2 },
+      // Fixed pricing derives from no oracle, and a mid supplied here
+      // would be refused alongside it.
+      agreed_mid: null,
       timestamp: Date.now(),
     };
     const reservationId = await reservations.sendReservationRequest(client, request, bot);
@@ -207,6 +298,87 @@ describe.skipIf(!endpoint)("against a real node", () => {
     // this also proves the SDK is not caching one.
     await expect(settlement.getMySettlements(client, bot)).resolves.toEqual([]);
     await expect(disputes.getMyDisputes(client, bot)).resolves.toEqual([]);
+  });
+
+  // The join, which was the way around all of the above: a trade embeds
+  // the reservation and the settlement whole, so a redaction that stopped
+  // at the three underlying reads left the same graph one method along.
+  it("redacts the trade join and answers the requester's own trades in full", async () => {
+    const merchant = await generateKeypair();
+    const bot = await generateKeypair();
+    const botId = toBytes(peerIdFromPublicKey(bot.publicKey));
+
+    const adId = await advertisements.sendAdvertisementCreate(
+      client,
+      {
+        id: "vitest-trade-redaction-ad",
+        merchant: toBytes(peerIdFromPublicKey(merchant.publicKey)),
+        merchant_public_key: toBytes(merchant.publicKey),
+        asset_mint: USDT_MINT,
+        direction: "Sell",
+        fiat_currency: "KES",
+        min_trade: { base_units: 1_000, decimals: 2 },
+        max_trade: { base_units: 50_000, decimals: 2 },
+        initial_liquidity: { base_units: 200_000, decimals: 2 },
+        pricing: { Fixed: { price: { base_units: 12_950, decimals: 2 } } },
+        payment_methods: ["M-Pesa"],
+        timestamp: Date.now(),
+      },
+      merchant,
+    );
+    const reservationId = await reservations.sendReservationRequest(
+      client,
+      {
+        id: "vitest-trade-redaction-reservation",
+        advertisement_id: adId,
+        requester: botId,
+        requester_public_key: toBytes(bot.publicKey),
+        amount: { base_units: 5_000, decimals: 2 },
+        agreed_price: { base_units: 12_950, decimals: 2 },
+        agreed_mid: null,
+        timestamp: Date.now(),
+      },
+      bot,
+    );
+
+    // A trade is keyed by its reservation id, and it exists as soon as
+    // the reservation does — before any settlement, when the requester
+    // is its only party.
+    const publicOne = await trade.getTrade(client, reservationId);
+    expect(publicOne?.reservation.id).toBe(reservationId);
+    expect(publicOne?.settlement).toBeNull();
+    expect(publicOne?.status).toBe("EscrowLocked");
+    expect(publicOne?.reservation).not.toHaveProperty("requester");
+    // Asserted on the raw JSON too: the type would happily fail to
+    // mention a field the node still sends, which is exactly how this
+    // hole survived being closed everywhere else.
+    const publicAll = await trade.getTrades(client);
+    expect(publicAll.some((t) => t.reservation.id === reservationId)).toBe(true);
+    expect(JSON.stringify(publicAll)).not.toContain("requester");
+
+    // The requester, proving their wallet, reads the join whole.
+    const mine = await trade.getMyTrades(client, bot);
+    const own = mine.find((t) => t.reservation.id === reservationId);
+    expect(own?.reservation.requester).toEqual(botId);
+
+    // The status the public read derives and the one this SDK derives
+    // from the party's own copy must be the same value — that is what
+    // keeps `tradeStatus` from drifting away from the node's rule, since
+    // `getMyTrades` sends no status of its own.
+    expect(own && trade.tradeStatus(own)).toBe(publicOne?.status);
+
+    // A proof opens the prover's own trades and nothing else — a wallet
+    // with none gets an empty list, not the network's.
+    //
+    // The merchant is that wallet here, and deliberately so: party means
+    // the reservation's requester or a side of the settlement, and a
+    // settlement does not exist yet. So the merchant whose liquidity is
+    // locked by this very reservation cannot read it back through any
+    // authenticated method until settlement starts. That is a gap in the
+    // node's filter rather than in this binding — recorded here because a
+    // merchant client will hit it, and an empty list looks identical to
+    // a working call.
+    await expect(trade.getMyTrades(client, merchant)).resolves.toEqual([]);
   });
 
   it("refuses a wallet proof signed by someone else's key", async () => {
@@ -249,7 +421,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
       id: "vitest-lifecycle-ad",
       merchant: merchantId,
       merchant_public_key: toBytes(merchant.publicKey),
-      asset: "USDT",
+      asset_mint: USDT_MINT,
       direction: "Sell",
       fiat_currency: "KES",
       min_trade: { base_units: 1_000, decimals: 2 },

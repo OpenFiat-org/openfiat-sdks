@@ -33,7 +33,12 @@ async function main() {
     id: "example-trading-bot-ad-ts",
     merchant: toBytes(peerIdFromPublicKey(merchant.publicKey)),
     merchant_public_key: toBytes(merchant.publicKey),
-    asset: "USDT",
+    // The devnet USDT mint, not the string "USDT". An advertisement names
+    // the token by its address because a ticker is a label the merchant
+    // picked and nothing ties it to what the escrow moves. The buyer still
+    // reads "USDT" — the node resolves that from this address on the way
+    // out, as `asset_symbol`.
+    asset_mint: "C4rSGhdxWhSFQuFcAxQti1JvBxriwHJoHtJjfhs5p24Y",
     direction: "Sell",
     fiat_currency: "KES",
     min_trade: { base_units: 1_000, decimals: 2 },
@@ -55,6 +60,13 @@ async function main() {
     requester: toBytes(peerIdFromPublicKey(bot.publicKey)),
     requester_public_key: toBytes(bot.publicKey),
     amount: { base_units: 5_000, decimals: 2 },
+    // The price the bot is agreeing to, which for a fixed advertisement
+    // is the merchant's signed number exactly. The node refuses a
+    // reservation whose price does not follow from the ad rather than
+    // binding the taker to a number they never signed.
+    agreed_price: { base_units: 12_950, decimals: 2 },
+    // No oracle behind a fixed price, so no mid to record.
+    agreed_mid: null,
     timestamp: Date.now(),
   };
   const reservationId = await reservations.sendReservationRequest(client, request, bot);

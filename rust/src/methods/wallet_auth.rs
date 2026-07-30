@@ -8,12 +8,17 @@
 //! which merchant a wallet always returns to, and who a busy merchant's
 //! regulars are, is a physical-safety question in a P2P fiat market.
 //!
-//! So `getSettlements`, `getReservations` and `getDisputes` answer with
-//! the redacted shapes in [`crate::methods::redaction`], and a party
-//! reads their own records in full through `getMySettlements`,
-//! `getMyReservations` and `getMyDisputes` — each of which takes a
-//! [`WalletProof`] rather than a wallet parameter, so there is no way to
-//! spell "somebody else's history".
+//! So `getSettlements`, `getReservations`, `getDisputes` and `getTrades`
+//! answer with the redacted shapes in [`crate::methods::redaction`], and
+//! a party reads their own records in full through `getMySettlements`,
+//! `getMyReservations`, `getMyDisputes` and `getMyTrades` — each of which
+//! takes a [`WalletProof`] rather than a wallet parameter, so there is no
+//! way to spell "somebody else's history".
+//!
+//! `getTrades` joined the list late, and instructively: it composes a
+//! reservation and a settlement, so while the three underlying reads were
+//! being closed it went on returning both whole. Reasoning about the
+//! methods somebody thought of does not cover the one they did not.
 //!
 //! # The exchange
 //!

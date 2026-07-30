@@ -2,8 +2,8 @@ import type { Client } from "../client.js";
 import { type Keypair, sign } from "../crypto.js";
 import {
   toBytes,
-  type Advertisement,
   type AdvertisementCreate,
+  type AdvertisementView,
   type AdvertisementDisable,
   type AdvertisementPriceUpdate,
   type SignedAdvertisementCreate,
@@ -11,11 +11,20 @@ import {
   type SignedAdvertisementPriceUpdate,
 } from "../types.js";
 
-export async function getAdvertisement(client: Client, id: string): Promise<Advertisement | null> {
+/**
+ * Read one advertisement, with the name its `asset_mint` resolves to
+ * attached by the node — see {@link AdvertisementView} for why the symbol
+ * arrives beside the record rather than in it, and why this SDK resolves
+ * no mint names of its own.
+ */
+export async function getAdvertisement(
+  client: Client,
+  id: string,
+): Promise<AdvertisementView | null> {
   return client.call("getAdvertisement", { id });
 }
 
-export async function getAdvertisements(client: Client): Promise<Advertisement[]> {
+export async function getAdvertisements(client: Client): Promise<AdvertisementView[]> {
   return client.call("getAdvertisements", {});
 }
 

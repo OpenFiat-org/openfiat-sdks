@@ -1,7 +1,8 @@
 /**
  * The wallet-proof trade reads, asserted at the wire.
  *
- * `getMySettlements`, `getMyReservations` and `getMyDisputes` are gated by
+ * `getMySettlements`, `getMyReservations`, `getMyDisputes` and
+ * `getMyTrades` are gated by
  * a signature over `"<domain>:<subject>:<nonce>"`, and the domain is a
  * bare string constant transcribed from the node's own. Get one character
  * of it wrong and the node answers with a signature failure that never
@@ -20,7 +21,9 @@ import { generateKeypair, peerIdFromPublicKey, type Keypair } from "../src/crypt
 import { getMyDisputes } from "../src/methods/disputes.js";
 import { getMyReservations } from "../src/methods/reservations.js";
 import { getMySettlements } from "../src/methods/settlement.js";
+import { getMyTrades, tradeStatus } from "../src/methods/trade.js";
 import { getWalletChallenge, walletChallengeBytes } from "../src/methods/wallet.js";
+import type { Reservation, ReservationState, Settlement, Trade } from "../src/types.js";
 
 /**
  * The nonce the stub issues. Fixed, so the bytes the SDK signs are fully
@@ -133,7 +136,15 @@ describe("the wallet-proof trade reads", () => {
     await expectProofExchange(calls, keypair, "getMyDisputes", "openfiat-my-disputes");
   });
 
-  // The property the three separate domains exist for. Collapse them into
+  it("signs getMyTrades under the trades domain", async () => {
+    const { calls, client } = stubNode();
+    const keypair = await generateKeypair();
+
+    await expect(getMyTrades(client, keypair)).resolves.toEqual([]);
+    await expectProofExchange(calls, keypair, "getMyTrades", "openfiat-my-trades");
+  });
+
+  // The property the four separate domains exist for. Collapse them into
   // one constant and every test above still passes.
   it("does not produce a proof that opens another surface", async () => {
     const { calls, client } = stubNode();
@@ -144,7 +155,11 @@ describe("the wallet-proof trade reads", () => {
       Buffer.from(calls[1]?.params.signature as string, "base64"),
     );
     const wallet = walletOf(keypair);
-    for (const other of ["openfiat-my-reservations", "openfiat-my-disputes"]) {
+    for (const other of [
+      "openfiat-my-reservations",
+      "openfiat-my-disputes",
+      "openfiat-my-trades",
+    ]) {
       await expect(
         ed.verifyAsync(
           signature,
@@ -152,6 +167,82 @@ describe("the wallet-proof trade reads", () => {
           keypair.publicKey,
         ),
       ).resolves.toBe(false);
+    }
+  });
+});
+
+/**
+ * `getMyTrades` answers with the joined record, which carries no derived
+ * status — the node computes that on the public view only. So a party
+ * reading their own trade is the one caller who has to derive it, and
+ * `tradeStatus` is that derivation. These pin the two collapses that are
+ * not obvious from the type; the live-node suite pins the whole thing
+ * against the node's own answer for a real trade.
+ */
+describe("the trade status a party has to derive for themselves", () => {
+  const zeros = new Array<number>(32).fill(0);
+
+  const reservation = (state: ReservationState): Reservation => ({
+    id: "r-1",
+    advertisement_id: "ad-1",
+    requester: zeros,
+    requester_public_key: zeros,
+    amount: { base_units: 5_000, decimals: 2 },
+    agreed_price: { base_units: 12_950, decimals: 2 },
+    agreed_mid: null,
+    state,
+    requested_at: 1_785_326_039_513,
+    updated_at: 1_785_326_039_513,
+    expires_at: 1_785_326_339_513,
+  });
+
+  const settled = (state: Settlement["state"]): Trade => ({
+    reservation: reservation("EscrowLocked"),
+    settlement: {
+      id: "s-1",
+      reservation_id: "r-1",
+      buyer: zeros,
+      buyer_public_key: zeros,
+      seller: zeros,
+      seller_public_key: zeros,
+      amount: { base_units: 5_000, decimals: 2 },
+      state,
+      payment_reference: null,
+      escrow_release_signature: null,
+      payment_submitted_at: null,
+      merchant_responded_at: null,
+      payment_discrepancy: null,
+      created_at: 1_785_326_039_513,
+      updated_at: 1_785_326_039_513,
+    },
+  });
+
+  it("is EscrowLocked while no settlement has started", () => {
+    expect(tradeStatus({ reservation: reservation("EscrowLocked"), settlement: null })).toBe(
+      "EscrowLocked",
+    );
+  });
+
+  // An expired reservation and a cancelled one are the same thing to
+  // someone looking at a trade: it is not happening.
+  it("reads an expired reservation as cancelled", () => {
+    for (const state of ["Cancelled", "Expired"] as const) {
+      expect(tradeStatus({ reservation: reservation(state), settlement: null })).toBe("Cancelled");
+    }
+  });
+
+  // `Approved` is the merchant saying yes; `Completed` is the on-chain
+  // release confirming. One value for both, because a status line has
+  // nothing different to say — `escrow_release_signature` is where the
+  // distinction lives for a caller who needs it.
+  it("collapses Approved and Completed", () => {
+    expect(tradeStatus(settled("Approved"))).toBe("Completed");
+    expect(tradeStatus(settled("Completed"))).toBe("Completed");
+  });
+
+  it("otherwise reads through to the settlement's own state", () => {
+    for (const state of ["AwaitingPayment", "PaymentSubmitted", "Rejected", "Disputed"] as const) {
+      expect(tradeStatus(settled(state))).toBe(state);
     }
   });
 });

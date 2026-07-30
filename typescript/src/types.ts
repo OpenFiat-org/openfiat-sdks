@@ -231,6 +231,25 @@ export interface ProviderEarnings {
 export type Direction = "Buy" | "Sell";
 
 /**
+ * A base58 Solana mint address — the token a trade is denominated in.
+ *
+ * This replaced `asset: string`, and the difference is the whole point.
+ * A ticker on a record is a label the *merchant* chose, tied to the token
+ * the escrow actually moves by nothing at all: an ad could say "USDC" and
+ * settle in something else, with every layer agreeing the trade completed,
+ * because each did exactly what it was asked. The on-chain settlement
+ * allowlist closed the worst version of that — a mint the merchant minted
+ * themselves cannot fund an escrow — but it cannot close the gap between a
+ * label and an identity, because the program never sees the label.
+ *
+ * A mint address is an identity. The node rejects anything here that is
+ * not base58 decoding to exactly 32 bytes, and rejects it at decode time,
+ * so a bad value fails the whole event rather than reaching a buyer's
+ * screen.
+ */
+export type MintAddress = string;
+
+/**
  * `premium_bps` is signed on purpose — a merchant competing for flow may
  * quote below mid — and `price_decimals` is the precision the resolved
  * fiat price is quoted in (2 for KES/NGN/USD, 0 for JPY).
@@ -253,7 +272,10 @@ export interface AdvertisementCreate {
   id: string;
   merchant: PeerIdBytes;
   merchant_public_key: PublicKeyBytes;
-  asset: string;
+  /** The mint the buyer is paid in — see {@link MintAddress}. There is no
+   *  companion symbol field, and that absence is deliberate: the name a
+   *  buyer reads is resolved from this by the node, never supplied here. */
+  asset_mint: MintAddress;
   direction: Direction;
   fiat_currency: string;
   min_trade: Amount;
@@ -296,11 +318,14 @@ export interface SignedAdvertisementPriceUpdate {
   signature: SignatureBytes;
 }
 
+/** The replicated advertisement record, exactly as it is signed, gossiped
+ *  and stored. What a *reader* gets back is {@link AdvertisementView}. */
 export interface Advertisement {
   id: string;
   merchant: PeerIdBytes;
   merchant_public_key: PublicKeyBytes;
-  asset: string;
+  /** The mint the buyer is paid in — see {@link MintAddress}. */
+  asset_mint: MintAddress;
   direction: Direction;
   fiat_currency: string;
   min_trade: Amount;
@@ -313,6 +338,33 @@ export interface Advertisement {
   updated_at: TimestampMs;
 }
 
+/**
+ * An advertisement as a reader gets it: the record above, plus the name
+ * the node resolved for its mint.
+ *
+ * A separate type rather than a field on {@link Advertisement} because
+ * the symbol is not part of the record and must never become part of it.
+ * It is derived at the edge, by the node answering the call, from a table
+ * every node compiles in identically — so a merchant cannot choose it,
+ * and it cannot be signed into a record that then travels claiming a name
+ * for a mint it does not have.
+ *
+ * The SDK deliberately ships **no** mint-to-ticker table of its own. One
+ * here would put merchant-independent labelling back one layer out, and
+ * would drift from the node's answer the first time governance allowlists
+ * a mint — which is the same disagreement between two honest builds that
+ * the node's own table exists to avoid.
+ */
+export interface AdvertisementView extends Advertisement {
+  /**
+   * What people call `asset_mint`, or `null` if this node knows no name
+   * for it. `null` is not an error and not a reason to guess: an unknown
+   * mint is an address with no nickname, and the honest thing to show a
+   * user is the address itself.
+   */
+  asset_symbol: string | null;
+}
+
 // --- Reservations (OFS-2200) ---
 
 export type ReservationState = "EscrowLocked" | "Cancelled" | "Expired";
@@ -323,6 +375,31 @@ export interface ReservationRequest {
   requester: PeerIdBytes;
   requester_public_key: PublicKeyBytes;
   amount: Amount;
+  /**
+   * Fiat per unit of asset, as the requester understood it when they
+   * signed — the number the trade is actually for.
+   *
+   * A floating advertisement publishes a formula, not a price, and two
+   * honest nodes resolving it at the same instant can return different
+   * numbers. Without this the taker agreed to a figure the protocol
+   * recorded nowhere, and a merchant asserting a different rate afterwards
+   * was arguing against nothing.
+   *
+   * The node refuses a reservation whose price does not follow from what
+   * the merchant signed — for a fixed ad, an exact match on both
+   * `base_units` and `decimals`; for a floating one, the same arithmetic
+   * the display path used, recomputed from `agreed_mid`. It refuses rather
+   * than substituting its own number, which would bind the taker to a
+   * price they never signed.
+   */
+  agreed_price: Amount;
+  /**
+   * The oracle mid `agreed_price` was derived from, for a floating
+   * advertisement. `null` for a fixed one, where there is nothing to
+   * derive — and a mid supplied alongside a fixed price is refused, so
+   * this field means one thing rather than two.
+   */
+  agreed_mid: number | null;
   timestamp: TimestampMs;
 }
 
@@ -344,6 +421,11 @@ export interface Reservation {
   requester: PeerIdBytes;
   requester_public_key: PublicKeyBytes;
   amount: Amount;
+  /** The price this reservation was made at. The advertisement's own quote
+   *  moves with the oracle and is only ever a display; once a reservation
+   *  exists the price is settled and stops moving. */
+  agreed_price: Amount;
+  agreed_mid: number | null;
   state: ReservationState;
   requested_at: TimestampMs;
   updated_at: TimestampMs;
@@ -364,6 +446,10 @@ export interface Reservation {
  * caller writes `reservation.requester`, gets `undefined` forever, and
  * never discovers that `reservations.getMyReservations` would have
  * answered. Here the compiler says so at the call site.
+ *
+ * `agreed_price` is absent because the node does not send it here, not
+ * because this SDK drops it — so the price a public trade was struck at
+ * is currently readable only by its own parties.
  */
 export interface PublicReservation {
   id: string;
@@ -440,6 +526,66 @@ export interface PublicSettlement {
   payment_discrepancy: PaymentDiscrepancy | null;
   created_at: TimestampMs;
   updated_at: TimestampMs;
+}
+
+// --- Trades (OFS-2000) ---
+
+/**
+ * The one value a client displaying a trade actually wants, instead of
+ * "check the reservation state, then whether a settlement exists, then
+ * its state".
+ *
+ * `Completed` covers both of the settlement's `Approved` and `Completed`
+ * — a caller that needs "has the release actually landed on chain" reads
+ * the settlement's `escrow_release_signature` instead.
+ */
+export type TradeStatus =
+  | "EscrowLocked"
+  | "AwaitingPayment"
+  | "PaymentSubmitted"
+  | "Completed"
+  | "Rejected"
+  | "Cancelled"
+  | "Disputed";
+
+/**
+ * A trade in full, as one of its own parties reads it back through
+ * `getMyTrades`. No unauthenticated read returns this shape — see
+ * {@link PublicTrade}.
+ *
+ * A trade is not a record of its own: it is a read-time join of a
+ * reservation and the settlement it became, correlated by reservation id,
+ * which is why `settlement` is null for a reservation nobody has started
+ * settling yet.
+ *
+ * There is no `status` here, and its absence is the node's, not this
+ * SDK's: the derived status is computed by the public view and is not a
+ * field of the joined record, so `getMyTrades` does not send one. Callers
+ * who want it from their own trades call {@link tradeStatus}.
+ */
+export interface Trade {
+  reservation: Reservation;
+  settlement: Settlement | null;
+}
+
+/**
+ * A trade with both parties removed — what `getTrade` and `getTrades`
+ * answer.
+ *
+ * This read was the way around the redaction of the three underlying
+ * ones: a trade embeds a reservation and a settlement whole, so leaving
+ * it open left the who-trades-with-whom graph available one method along
+ * from where it had just been closed. It is composed of the two public
+ * halves rather than redacted separately, so a field added to either
+ * cannot appear here without appearing there.
+ *
+ * `status` survives because it is what a trade view is for and says
+ * nothing about who is party to it.
+ */
+export interface PublicTrade {
+  reservation: PublicReservation;
+  settlement: PublicSettlement | null;
+  status: TradeStatus;
 }
 
 // --- Disputes (OFS-2400) ---

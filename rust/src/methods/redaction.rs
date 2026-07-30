@@ -23,14 +23,14 @@
 //! # Reading your own records
 //!
 //! The unredacted shapes are `openfiat_settlement::Settlement`,
-//! `openfiat_reservations::Reservation` and
-//! `openfiat_disputes::Dispute`, returned by `get_my_*` behind a wallet
+//! `openfiat_reservations::Reservation`, `openfiat_disputes::Dispute`
+//! and `openfiat_trade::Trade`, returned by `get_my_*` behind a wallet
 //! proof — see [`crate::methods::wallet_auth`].
 //!
 //! # Defined here rather than reused from `openfiat-rpc`
 //!
 //! Every other shape in this SDK is imported from `openfiat-core` so the
-//! two cannot drift. These three cannot be: they live in
+//! two cannot drift. These four cannot be: they live in
 //! `openfiat-rpc`'s `methods::redaction`, and `openfiat-rpc` is a
 //! dev-dependency of this crate (it is the node, not a wire-type crate),
 //! so a public API returning its types would drag a whole node into
@@ -105,4 +105,55 @@ pub struct PublicDispute {
     pub onchain_execution_signature: Option<String>,
     pub opened_at: Timestamp,
     pub updated_at: Timestamp,
+}
+
+/// The aggregate status of a trade — one value instead of "check the
+/// reservation state, then whether a settlement exists, then its state".
+///
+/// `Completed` covers the settlement's `Approved` (the merchant said yes)
+/// and `Completed` (the on-chain release confirmed) alike; a caller who
+/// needs that distinction reads the settlement's own
+/// `escrow_release_signature`, which is where "has it actually landed"
+/// lives.
+///
+/// Transcribed rather than re-exported from `openfiat_trade::TradeStatus`
+/// only because that type gained its `Deserialize` after the revision
+/// this crate is pinned to (see `rust/Cargo.toml`). It becomes a
+/// re-export the moment the pin moves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+pub enum TradeStatus {
+    /// The reservation succeeded; no settlement has started.
+    EscrowLocked,
+    AwaitingPayment,
+    PaymentSubmitted,
+    Completed,
+    Rejected,
+    Cancelled,
+    Disputed,
+}
+
+/// A trade with both parties removed.
+///
+/// Returned by [`Client::get_trade`](crate::Client::get_trade) and
+/// [`Client::get_trades`](crate::Client::get_trades).
+///
+/// A trade is a read-time join of a reservation and the settlement it
+/// became, which made this read the way around the redaction of the three
+/// underlying ones: it returned both records whole, so closing them and
+/// leaving this open left the same graph one method along. It is composed
+/// of the two public halves rather than redacted a second time, so a field
+/// added to either cannot appear here without appearing there.
+///
+/// `status` survives because it is what a trade view is for and says
+/// nothing about who is party to it. Note that it survives *only* here —
+/// [`Client::get_my_trades`](crate::Client::get_my_trades) answers with
+/// `openfiat_trade::Trade`, which carries no status field; a party calls
+/// its `status()` method for the same value.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct PublicTrade {
+    pub reservation: PublicReservation,
+    /// `None` until settlement starts — a trade exists as soon as its
+    /// reservation does.
+    pub settlement: Option<PublicSettlement>,
+    pub status: TradeStatus,
 }

@@ -4,8 +4,9 @@
  *
  * Typed methods live in `src/methods/*.ts`, one module per domain —
  * node, chain bridge, oracles, service providers, advertisements,
- * reservations, and notifications so far (see that directory's own
- * comment for how to extend it to another domain).
+ * reservations, settlements, disputes, trades, and notifications so far
+ * (see that directory's own comment for how to extend it to another
+ * domain).
  *
  * Browser/edge-safe by design — Node-only wallet file I/O (`node:fs`)
  * lives in the separate `@openfiat/sdk/node` entry point instead.
@@ -23,5 +24,6 @@ export * as oracles from "./methods/oracles.js";
 export * as providers from "./methods/providers.js";
 export * as reservations from "./methods/reservations.js";
 export * as settlement from "./methods/settlement.js";
+export * as trade from "./methods/trade.js";
 export * as wallet from "./methods/wallet.js";
 export * as onchain from "./onchain/index.js";
