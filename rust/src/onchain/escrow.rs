@@ -113,6 +113,11 @@ struct UpdateFeeConfigParams {
     // program's own `UpdateFeeConfigParams`.
     min_arbitrator_stake_age_secs: i64,
     arbitrator_sortition_bps: u16,
+    /// The complete settlement-mint allowlist, replacing whatever is
+    /// stored — a replacement rather than an append, so it is also the only
+    /// way to de-list. Appended last for the same wire-format reason as the
+    /// two fields above.
+    settlement_mints: Vec<Pubkey>,
 }
 
 /// Corrects the singleton `FeeConfig` after initialization (admin-only).
@@ -135,6 +140,16 @@ struct UpdateFeeConfigParams {
 /// Zero disables each. `arbitrator_sortition_bps` must be below 10_000; the
 /// program rejects a value that would admit every wallet rather than
 /// silently accepting "disabled" written unclearly.
+///
+/// # The settlement-mint allowlist
+///
+/// `settlement_mints` is the **complete** list, replacing whatever is
+/// stored, which is what makes this the de-listing path as well as the
+/// adding one. It may hold at most 16 entries, may not be empty, and may
+/// not repeat a mint or contain the default pubkey — an empty list would
+/// refuse every trade, which is pausing the protocol rather than setting a
+/// fee. De-listing strands nothing: existing vaults stay depositable and
+/// withdrawable, and only new reservations and escrows are refused.
 #[allow(clippy::too_many_arguments)]
 pub fn update_fee_config_ix(
     admin: &Pubkey,
@@ -153,6 +168,7 @@ pub fn update_fee_config_ix(
     timeout_secs: i64,
     min_arbitrator_stake_age_secs: i64,
     arbitrator_sortition_bps: u16,
+    settlement_mints: Vec<Pubkey>,
 ) -> Instruction {
     let (fee_config, _) = fee_config_pda();
     let data = instruction_data(
@@ -168,6 +184,7 @@ pub fn update_fee_config_ix(
             timeout_secs,
             min_arbitrator_stake_age_secs,
             arbitrator_sortition_bps,
+            settlement_mints,
         },
     );
     Instruction::new_with_bytes(
@@ -234,7 +251,18 @@ pub fn initialize_fee_config_ix(
     )
 }
 
+/// Creates a merchant's vault for one mint.
+///
+/// `fee_config` carries the settlement-mint allowlist, and
+/// `arbitration_pool` is how the program recognises the OPEN mint — OPEN is
+/// not an allowlisted settlement mint, so a merchant's OPEN vault (the one
+/// that funds the ad-listing fee and the arbitration deposit) is only
+/// creatable through that carve-out. Both are seeds-derived singletons, so
+/// neither is a parameter; both must nonetheless be in the account list, and
+/// `initialize_arbitration_pool` must have run on the cluster first.
 pub fn create_liquidity_vault_ix(merchant: &Pubkey, mint: &Pubkey) -> Instruction {
+    let (fee_config, _) = fee_config_pda();
+    let (arbitration_pool, _) = arbitration_pool_pda();
     let (liquidity_vault, _) = liquidity_vault_pda(merchant, mint);
     let (token_vault, _) = liquidity_vault_tokens_pda(merchant, mint);
     let data = instruction_data([204, 255, 106, 205, 72, 186, 252, 83], ());
@@ -244,6 +272,8 @@ pub fn create_liquidity_vault_ix(merchant: &Pubkey, mint: &Pubkey) -> Instructio
         vec![
             AccountMeta::new(*merchant, true),
             AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new_readonly(fee_config, false),
+            AccountMeta::new_readonly(arbitration_pool, false),
             AccountMeta::new(liquidity_vault, false),
             AccountMeta::new(token_vault, false),
             AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
@@ -280,8 +310,13 @@ pub fn deposit_liquidity_ix(
 
 /// Marking-only — no token movement (see the on-chain instruction's own
 /// doc comment on why this requires the merchant's signature).
+///
+/// `fee_config` is read for the settlement-mint allowlist: a reservation is
+/// where new exposure to a mint starts, so a de-listed mint is refused here
+/// while everything already deposited stays withdrawable.
 pub fn reserve_liquidity_ix(merchant: &Pubkey, mint: &Pubkey, amount: u64) -> Instruction {
     let (liquidity_vault, _) = liquidity_vault_pda(merchant, mint);
+    let (fee_config, _) = fee_config_pda();
     let data = instruction_data([197, 37, 232, 60, 182, 38, 12, 84], amount);
     Instruction::new_with_bytes(
         ESCROW_PROGRAM_ID,
@@ -289,6 +324,7 @@ pub fn reserve_liquidity_ix(merchant: &Pubkey, mint: &Pubkey, amount: u64) -> In
         vec![
             AccountMeta::new_readonly(*merchant, true),
             AccountMeta::new(liquidity_vault, false),
+            AccountMeta::new_readonly(fee_config, false),
         ],
     )
 }
@@ -328,6 +364,7 @@ pub fn create_trade_escrow_ix(
     timeout_secs: i64,
 ) -> Instruction {
     let (liquidity_vault, _) = liquidity_vault_pda(merchant, mint);
+    let (fee_config, _) = fee_config_pda();
     let (trade_escrow, _) = trade_escrow_pda(reservation_id);
     let (token_vault, _) = trade_escrow_tokens_pda(reservation_id);
     let data = instruction_data(
@@ -341,6 +378,7 @@ pub fn create_trade_escrow_ix(
             AccountMeta::new(*merchant, true),
             AccountMeta::new_readonly(*buyer, false),
             AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new_readonly(fee_config, false),
             AccountMeta::new(liquidity_vault, false),
             AccountMeta::new(trade_escrow, false),
             AccountMeta::new(token_vault, false),
@@ -741,6 +779,8 @@ mod tests {
         let eco = Pubkey::new_unique();
         let infra = Pubkey::new_unique();
         let emergency = Pubkey::new_unique();
+        let settlement_a = Pubkey::new_unique();
+        let settlement_b = Pubkey::new_unique();
         let ix = update_fee_config_ix(
             &admin,
             &mint,
@@ -761,11 +801,25 @@ mod tests {
             // still catch them being dropped from the payload.
             30 * 24 * 60 * 60,
             100,
+            // Two allowlisted mints, so the Vec's length prefix and its
+            // elements are both non-degenerate in the length assertion.
+            vec![settlement_a, settlement_b],
         );
         assert_eq!(&ix.data[..8], &[104, 184, 103, 242, 88, 151, 107, 20]);
-        // 8 disc + u64*2 + u16*5 + i64 + i64 + u16 — no 32-byte pubkeys in
-        // the payload; every treasury travels as an account.
-        assert_eq!(ix.data.len(), 8 + 8 + 8 + 2 + 2 + 2 + 2 + 2 + 8 + 8 + 2);
+        // 8 disc + u64*2 + u16*5 + i64 + i64 + u16, then the allowlist as a
+        // Borsh Vec: a u32 length followed by two raw 32-byte keys. The
+        // treasuries are still absent from the payload — every one of them
+        // travels as an account, which is the property this test is named
+        // for and which the allowlist must not quietly undo.
+        assert_eq!(
+            ix.data.len(),
+            8 + 8 + 8 + 2 + 2 + 2 + 2 + 2 + 8 + 8 + 2 + 4 + 32 + 32
+        );
+        assert_eq!(
+            &ix.data[ix.data.len() - 64..ix.data.len() - 32],
+            settlement_a.as_ref()
+        );
+        assert_eq!(&ix.data[ix.data.len() - 32..], settlement_b.as_ref());
 
         let (fee_config, _) = fee_config_pda();
         let keys: Vec<Pubkey> = ix.accounts.iter().map(|a| a.pubkey).collect();
@@ -815,6 +869,72 @@ mod tests {
     /// Every discriminator below is copy-pasted straight from
     /// `programs/target/idl/escrow.json` — this test is a tripwire
     /// against a future edit silently drifting from that file.
+    /// The three instructions that gained an account when the
+    /// settlement-mint allowlist landed.
+    ///
+    /// Pinned as exact, ordered lists rather than "contains fee_config":
+    /// Anchor matches accounts by POSITION, not by name, so an account
+    /// inserted at the wrong index still deserializes — into the wrong
+    /// field — and fails somewhere unrelated. A containment check would
+    /// pass on exactly the layout that breaks.
+    #[test]
+    fn the_allowlist_gated_instructions_carry_fee_config_in_the_right_slot() {
+        let merchant = Pubkey::new_unique();
+        let buyer = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let (fee_config, _) = fee_config_pda();
+        let (arbitration_pool, _) = arbitration_pool_pda();
+        let (liquidity_vault, _) = liquidity_vault_pda(&merchant, &mint);
+        let (liquidity_tokens, _) = liquidity_vault_tokens_pda(&merchant, &mint);
+        let (trade_escrow, _) = trade_escrow_pda(1);
+        let (trade_tokens, _) = trade_escrow_tokens_pda(1);
+
+        let keys =
+            |ix: &Instruction| -> Vec<Pubkey> { ix.accounts.iter().map(|a| a.pubkey).collect() };
+
+        // `arbitration_pool` is here only so the program can recognise the
+        // OPEN mint, which is deliberately NOT an allowlisted settlement
+        // mint — dropping it makes a merchant's OPEN vault uncreatable and
+        // silently zeroes every arbitration deposit.
+        assert_eq!(
+            keys(&create_liquidity_vault_ix(&merchant, &mint)),
+            vec![
+                merchant,
+                mint,
+                fee_config,
+                arbitration_pool,
+                liquidity_vault,
+                liquidity_tokens,
+                TOKEN_2022_PROGRAM_ID,
+                system_program_id(),
+                RENT_SYSVAR_ID,
+            ]
+        );
+
+        assert_eq!(
+            keys(&reserve_liquidity_ix(&merchant, &mint, 100)),
+            vec![merchant, liquidity_vault, fee_config]
+        );
+
+        assert_eq!(
+            keys(&create_trade_escrow_ix(
+                &merchant, &buyer, &mint, 1, 100, 1800
+            )),
+            vec![
+                merchant,
+                buyer,
+                mint,
+                fee_config,
+                liquidity_vault,
+                trade_escrow,
+                trade_tokens,
+                TOKEN_2022_PROGRAM_ID,
+                system_program_id(),
+                RENT_SYSVAR_ID,
+            ]
+        );
+    }
+
     #[test]
     fn every_instruction_carries_its_real_idl_discriminator() {
         let merchant = Pubkey::new_unique();

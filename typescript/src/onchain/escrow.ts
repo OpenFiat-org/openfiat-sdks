@@ -1,6 +1,6 @@
 import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 
-import { enumTag, fixedBytes, i64LE, instructionData, meta, u16LE, u64LE } from "./codec.js";
+import { enumTag, fixedBytes, i64LE, instructionData, meta, u16LE, u32LE, u64LE } from "./codec.js";
 import {
   banRecordPda,
   ESCROW_PROGRAM_ID,
@@ -162,6 +162,14 @@ export interface UpdateFeeConfigParams {
    */
   minArbitratorStakeAgeSecs: bigint;
   /**
+   * The complete settlement-mint allowlist, replacing whatever is stored —
+   * a replacement rather than an append, so this is also the only way to
+   * de-list. At most 16 entries, never empty, no duplicates and no default
+   * pubkey: an empty list would refuse every trade, which is pausing the
+   * protocol rather than setting a fee.
+   */
+  settlementMints: PublicKey[];
+  /**
    * Opening sortition threshold in basis points; `0` disables the draw.
    * Must be below 10_000 — the program rejects a value that would admit
    * every wallet rather than accepting "disabled" written unclearly.
@@ -215,11 +223,28 @@ export function updateFeeConfigIx(
       // params struct — Borsh has no field names, so order is the format.
       i64LE(params.minArbitratorStakeAgeSecs),
       u16LE(params.arbitratorSortitionBps),
+      // Borsh `Vec<Pubkey>`: a u32 little-endian length, then the raw
+      // 32-byte keys.
+      u32LE(params.settlementMints.length),
+      ...params.settlementMints.map((m) => m.toBytes()),
     ),
   });
 }
 
+/**
+ * Creates a merchant's vault for one mint.
+ *
+ * `feeConfig` carries the settlement-mint allowlist, and `arbitrationPool`
+ * is how the program recognises the OPEN mint — OPEN is not an allowlisted
+ * settlement mint, so a merchant's OPEN vault (the one that funds the
+ * ad-listing fee and the arbitration deposit) is only creatable through
+ * that carve-out. Both are seeds-derived singletons, so neither is a
+ * parameter; both must nonetheless be in the account list, and
+ * `initialize_arbitration_pool` must have run on the cluster first.
+ */
 export function createLiquidityVaultIx(merchant: PublicKey, mint: PublicKey): TransactionInstruction {
+  const [feeConfig] = feeConfigPda();
+  const [arbitrationPool] = arbitrationPoolPda();
   const [liquidityVault] = liquidityVaultPda(merchant, mint);
   const [tokenVault] = liquidityVaultTokensPda(merchant, mint);
   return new TransactionInstruction({
@@ -227,6 +252,8 @@ export function createLiquidityVaultIx(merchant: PublicKey, mint: PublicKey): Tr
     keys: [
       meta(merchant, true, true),
       meta(mint, false, false),
+      meta(feeConfig, false, false),
+      meta(arbitrationPool, false, false),
       meta(liquidityVault, false, true),
       meta(tokenVault, false, true),
       meta(TOKEN_2022_PROGRAM_ID, false, false),
@@ -260,11 +287,23 @@ export function depositLiquidityIx(
   });
 }
 
+/**
+ * Marking-only — no token movement.
+ *
+ * `feeConfig` is read for the settlement-mint allowlist: a reservation is
+ * where new exposure to a mint starts, so a de-listed mint is refused here
+ * while everything already deposited stays withdrawable.
+ */
 export function reserveLiquidityIx(merchant: PublicKey, mint: PublicKey, amount: bigint): TransactionInstruction {
   const [liquidityVault] = liquidityVaultPda(merchant, mint);
+  const [feeConfig] = feeConfigPda();
   return new TransactionInstruction({
     programId: ESCROW_PROGRAM_ID,
-    keys: [meta(merchant, true, false), meta(liquidityVault, false, true)],
+    keys: [
+      meta(merchant, true, false),
+      meta(liquidityVault, false, true),
+      meta(feeConfig, false, false),
+    ],
     data: instructionData(DISCRIMINATORS.reserveLiquidity, u64LE(amount)),
   });
 }
@@ -300,6 +339,7 @@ export function createTradeEscrowIx(
   timeoutSecs: bigint,
 ): TransactionInstruction {
   const [liquidityVault] = liquidityVaultPda(merchant, mint);
+  const [feeConfig] = feeConfigPda();
   const [tradeEscrow] = tradeEscrowPda(reservationId);
   const [tokenVault] = tradeEscrowTokensPda(reservationId);
   return new TransactionInstruction({
@@ -308,6 +348,7 @@ export function createTradeEscrowIx(
       meta(merchant, true, true),
       meta(buyer, false, false),
       meta(mint, false, false),
+      meta(feeConfig, false, false),
       meta(liquidityVault, false, true),
       meta(tradeEscrow, false, true),
       meta(tokenVault, false, true),

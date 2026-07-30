@@ -95,9 +95,19 @@ describe("escrow instructions", () => {
     expectDiscriminator(ix, [204, 255, 106, 205, 72, 186, 252, 83]);
     const [liquidityVault] = liquidityVaultPda(merchant, mint);
     const [tokenVault] = liquidityVaultTokensPda(merchant, mint);
+    const [feeConfig] = feeConfigPda();
+    const [arbitrationPool] = arbitrationPoolPda();
     expectAccounts(ix, [
       { pubkey: merchant, isSigner: true, isWritable: true },
       { pubkey: mint, isSigner: false, isWritable: false },
+      // The settlement-mint allowlist.
+      { pubkey: feeConfig, isSigner: false, isWritable: false },
+      // Present only so the program can recognise the OPEN mint, which is
+      // deliberately NOT an allowlisted settlement mint. Dropping it makes
+      // a merchant's OPEN vault uncreatable, which in turn makes
+      // charge_ad_listing_fee uncallable and silently zeroes every
+      // arbitration deposit.
+      { pubkey: arbitrationPool, isSigner: false, isWritable: false },
       { pubkey: liquidityVault, isSigner: false, isWritable: true },
       { pubkey: tokenVault, isSigner: false, isWritable: true },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
@@ -130,9 +140,13 @@ describe("escrow instructions", () => {
     const ix = reserveLiquidityIx(merchant, mint, 500n);
     expectDiscriminator(ix, [197, 37, 232, 60, 182, 38, 12, 84]);
     const [liquidityVault] = liquidityVaultPda(merchant, mint);
+    const [feeConfig] = feeConfigPda();
     expectAccounts(ix, [
       { pubkey: merchant, isSigner: true, isWritable: false },
       { pubkey: liquidityVault, isSigner: false, isWritable: true },
+      // A reservation is where new exposure to a mint starts, so this is
+      // the earlier of the two allowlist gates.
+      { pubkey: feeConfig, isSigner: false, isWritable: false },
     ]);
   });
 
@@ -158,10 +172,14 @@ describe("escrow instructions", () => {
     const [liquidityVault] = liquidityVaultPda(merchant, mint);
     const [tradeEscrow] = tradeEscrowPda(reservationId);
     const [tokenVault] = tradeEscrowTokensPda(reservationId);
+    const [escrowFeeConfig] = feeConfigPda();
     expectAccounts(ix, [
       { pubkey: merchant, isSigner: true, isWritable: true },
       { pubkey: buyer, isSigner: false, isWritable: false },
       { pubkey: mint, isSigner: false, isWritable: false },
+      // The later allowlist gate, and the one that cannot be omitted: this
+      // is where the token account receiving the buyer's money is created.
+      { pubkey: escrowFeeConfig, isSigner: false, isWritable: false },
       { pubkey: liquidityVault, isSigner: false, isWritable: true },
       { pubkey: tradeEscrow, isSigner: false, isWritable: true },
       { pubkey: tokenVault, isSigner: false, isWritable: true },
@@ -469,6 +487,9 @@ describe("escrow instructions", () => {
       // being dropped from the payload.
       minArbitratorStakeAgeSecs: 2_592_000n,
       arbitratorSortitionBps: 100,
+      // Two mints, so the Vec's length prefix and its elements are both
+      // non-degenerate in the length assertion below.
+      settlementMints: [fakePubkey(46), fakePubkey(47)],
     });
     expectDiscriminator(ix, [104, 184, 103, 242, 88, 151, 107, 20]);
     const [feeConfig] = feeConfigPda();
@@ -481,8 +502,14 @@ describe("escrow instructions", () => {
       { pubkey: treasuries.infraTreasury, isSigner: false, isWritable: false },
       { pubkey: treasuries.emergencyReserve, isSigner: false, isWritable: false },
     ]);
-    // Treasury pubkeys must NOT appear in the data — they come from accounts.
-    expect(ix.data.length).toBe(8 + 8 + 8 + 2 + 2 + 2 + 2 + 2 + 8 + 8 + 2);
+    // Treasury pubkeys must NOT appear in the data — they come from
+    // accounts. The trailing 4 + 32 + 32 is the settlement allowlist as a
+    // Borsh Vec: a u32 length followed by two raw 32-byte keys.
+    expect(ix.data.length).toBe(8 + 8 + 8 + 2 + 2 + 2 + 2 + 2 + 8 + 8 + 2 + 4 + 32 + 32);
+    // 8 disc + 8 + 8 + (5 x u16) + 8 + 8 + 2 = 52 bytes before the Vec.
+    expect(ix.data.readUInt32LE(52)).toBe(2);
+    expect(Buffer.from(fakePubkey(46).toBytes()).equals(ix.data.subarray(56, 88))).toBe(true);
+    expect(Buffer.from(fakePubkey(47).toBytes()).equals(ix.data.subarray(88, 120))).toBe(true);
     expect(ix.data.readBigUInt64LE(8)).toBe(7n);
     expect(ix.data.readBigUInt64LE(16)).toBe(9n);
     expect(ix.data.readUInt16LE(24)).toBe(15);

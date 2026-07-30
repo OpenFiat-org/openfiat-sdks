@@ -23,6 +23,17 @@ export function u16LE(value: number): Uint8Array {
   return buf;
 }
 
+/**
+ * Borsh's collection-length prefix, and the only place a u32 appears in
+ * this SDK's instruction args. A `Vec<T>` is this length followed by the
+ * elements, unprefixed.
+ */
+export function u32LE(value: number): Uint8Array {
+  const buf = new Uint8Array(4);
+  new DataView(buf.buffer).setUint32(0, value, true);
+  return buf;
+}
+
 export function u64LE(value: bigint): Uint8Array {
   const buf = new Uint8Array(8);
   new DataView(buf.buffer).setBigUint64(0, value, true);
