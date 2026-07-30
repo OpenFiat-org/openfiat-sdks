@@ -2,6 +2,7 @@
 
 use crate::client::{Client, IdParams};
 use crate::error::Result;
+use crate::methods::redaction::PublicDispute;
 use openfiat_crypto::Keypair;
 use openfiat_disputes::events::{
     ArbitratorJoin, DisputeOpen, SignedArbitratorJoin, SignedDisputeOpen, SignedVoteCommit,
@@ -9,13 +10,34 @@ use openfiat_disputes::events::{
 };
 use openfiat_disputes::{Dispute, DisputeId};
 
+/// Domain separator for `getMyDisputes`, transcribed from
+/// `openfiat-rpc`'s `methods::disputes::CHALLENGE_DOMAIN`.
+pub const CHALLENGE_DOMAIN: &str = "openfiat-my-disputes";
+
 impl Client {
-    pub async fn get_dispute(&self, id: impl Into<String>) -> Result<Option<Dispute>> {
+    /// Read one dispute as a stranger sees it: status, arbitrator counts
+    /// and outcome survive; the parties, the free-text `reason` and
+    /// which arbitrator voted how do not. The pairing is what makes
+    /// pressuring an arbitrator worth the effort, so counts are
+    /// published and the pairing is not.
+    pub async fn get_dispute(&self, id: impl Into<String>) -> Result<Option<PublicDispute>> {
         self.call("getDispute", IdParams { id: id.into() }).await
     }
 
-    pub async fn get_disputes(&self) -> Result<Vec<Dispute>> {
+    /// Every dispute on the network, redacted.
+    pub async fn get_disputes(&self) -> Result<Vec<PublicDispute>> {
         self.call("getDisputes", ()).await
+    }
+
+    /// Every dispute `keypair`'s wallet is a party to — or is a seated
+    /// arbitrator on — in full, proved by signing a freshly issued
+    /// wallet challenge.
+    ///
+    /// An arbitrator qualifies because reading the whole case is the job
+    /// they were seated to do.
+    pub async fn get_my_disputes(&self, keypair: &Keypair) -> Result<Vec<Dispute>> {
+        let proof = self.wallet_proof(keypair, CHALLENGE_DOMAIN).await?;
+        self.call("getMyDisputes", proof).await
     }
 
     pub async fn send_dispute_open(

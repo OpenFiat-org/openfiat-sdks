@@ -236,7 +236,7 @@ async fn a_trading_bots_reservation_locks_escrow_against_a_published_advertiseme
 
     let request = ReservationRequest {
         id: ReservationId::new("live-node-trading-bot-reservation"),
-        advertisement_id: ad_id,
+        advertisement_id: ad_id.clone(),
         requester: peer_id(&bot),
         requester_public_key: bot.public_key(),
         amount: Amount::new(5_000, 2),
@@ -252,7 +252,18 @@ async fn a_trading_bots_reservation_locks_escrow_against_a_published_advertiseme
         .await
         .unwrap()
         .expect("just opened this reservation");
-    assert_eq!(reservation.requester, peer_id(&bot));
+    // The requester is deliberately absent: `getReservation` is a public
+    // read and naming the requester beside an advertisement that already
+    // names its merchant completes one edge of the trade graph. What
+    // survives is what an order book needs — which offer, how much, and
+    // that escrow locked.
+    //
+    // `get_my_reservations` is the read that would name the bot, and it
+    // is not exercised here: this test spawns a node built from the
+    // `openfiat-core` revision `Cargo.toml` pins, which predates the
+    // `getMy*` methods entirely. See `tests/trade_reads.rs`.
+    assert_eq!(reservation.advertisement_id, ad_id);
+    assert_eq!(reservation.amount, Amount::new(5_000, 2));
 }
 
 /// The same flow `examples/notification_provider.rs` walks through: a

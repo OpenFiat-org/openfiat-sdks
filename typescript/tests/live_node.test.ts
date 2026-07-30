@@ -12,6 +12,7 @@ import {
   Client,
   advertisements,
   chain,
+  disputes,
   generateKeypair,
   node,
   notifications,
@@ -19,7 +20,10 @@ import {
   peerIdFromPublicKey,
   providers,
   reservations,
+  settlement,
+  sign,
   toBytes,
+  wallet as walletAuth,
   type AdvertisementCreate,
   type DeliveryReport,
   type OraclePublish,
@@ -147,6 +151,89 @@ describe.skipIf(!endpoint)("against a real node", () => {
 
     const reservation = await reservations.getReservation(client, reservationId);
     expect(reservation?.state).toBe("EscrowLocked");
+  });
+
+  // The trade graph, against a real node: the public reads no longer name
+  // a party, and the wallet-proof reads do. Both halves matter — a
+  // redaction with no way to read your own trades back is a broken SDK,
+  // and a `getMy*` binding that signs the wrong bytes fails as an opaque
+  // signature error rather than as anything a caller can act on.
+  it("redacts the public reservation read and answers the requester's own in full", async () => {
+    const merchant = await generateKeypair();
+    const bot = await generateKeypair();
+    const botId = toBytes(peerIdFromPublicKey(bot.publicKey));
+
+    const create: AdvertisementCreate = {
+      id: "vitest-redaction-ad",
+      merchant: toBytes(peerIdFromPublicKey(merchant.publicKey)),
+      merchant_public_key: toBytes(merchant.publicKey),
+      asset: "USDT",
+      direction: "Sell",
+      fiat_currency: "KES",
+      min_trade: { base_units: 1_000, decimals: 2 },
+      max_trade: { base_units: 50_000, decimals: 2 },
+      initial_liquidity: { base_units: 200_000, decimals: 2 },
+      pricing: { Fixed: { price: { base_units: 12_950, decimals: 2 } } },
+      payment_methods: ["M-Pesa"],
+      timestamp: Date.now(),
+    };
+    const adId = await advertisements.sendAdvertisementCreate(client, create, merchant);
+
+    const request: ReservationRequest = {
+      id: "vitest-redaction-reservation",
+      advertisement_id: adId,
+      requester: botId,
+      requester_public_key: toBytes(bot.publicKey),
+      amount: { base_units: 5_000, decimals: 2 },
+      timestamp: Date.now(),
+    };
+    const reservationId = await reservations.sendReservationRequest(client, request, bot);
+
+    // The public read keeps the offer and drops the requester. Asserted
+    // on the raw JSON as well as the typed shape, because the type would
+    // happily describe a field the node still sends.
+    const publicOne = await reservations.getReservation(client, reservationId);
+    expect(publicOne?.advertisement_id).toBe(adId);
+    expect(publicOne).not.toHaveProperty("requester");
+    const publicAll = await reservations.getReservations(client);
+    expect(JSON.stringify(publicAll)).not.toContain("requester");
+
+    // The requester, proving their wallet, reads the same record whole.
+    const mine = await reservations.getMyReservations(client, bot);
+    const own = mine.find((r) => r.id === reservationId);
+    expect(own?.requester).toEqual(botId);
+
+    // A fresh proof each time: the nonce the last call spent is gone, so
+    // this also proves the SDK is not caching one.
+    await expect(settlement.getMySettlements(client, bot)).resolves.toEqual([]);
+    await expect(disputes.getMyDisputes(client, bot)).resolves.toEqual([]);
+  });
+
+  it("refuses a wallet proof signed by someone else's key", async () => {
+    const bot = await generateKeypair();
+    const stranger = await generateKeypair();
+
+    const challenge = await walletAuth.getWalletChallenge(
+      client,
+      peerIdFromPublicKey(bot.publicKey),
+    );
+    // The stranger signs honestly, with their own key, and asks about
+    // somebody else's wallet. The node refuses rather than quietly
+    // narrowing the answer to the stranger's own (empty) history — a
+    // filtering implementation looks identical in every passing test
+    // until a refactor drops the filter.
+    const signature = await sign(
+      stranger,
+      walletAuth.walletChallengeBytes(challenge, reservations.CHALLENGE_DOMAIN),
+    );
+    await expect(
+      client.call("getMyReservations", {
+        wallet: challenge.subject,
+        public_key: Buffer.from(stranger.publicKey).toString("base64"),
+        nonce: challenge.nonce,
+        signature: Buffer.from(signature).toString("base64"),
+      }),
+    ).rejects.toThrow();
   });
 
   // The rest of the merchant's own lifecycle, against a real node. The

@@ -16,9 +16,12 @@ export { type Keypair, generateKeypair, keypairFromSeed, peerIdFromPublicKey, si
 export * from "./types.js";
 export * as advertisements from "./methods/advertisements.js";
 export * as chain from "./methods/chain.js";
+export * as disputes from "./methods/disputes.js";
 export * as node from "./methods/node.js";
 export * as notifications from "./methods/notifications.js";
 export * as oracles from "./methods/oracles.js";
 export * as providers from "./methods/providers.js";
 export * as reservations from "./methods/reservations.js";
+export * as settlement from "./methods/settlement.js";
+export * as wallet from "./methods/wallet.js";
 export * as onchain from "./onchain/index.js";

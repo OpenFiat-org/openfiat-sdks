@@ -331,6 +331,13 @@ export interface SignedReservationRequest {
   signature: SignatureBytes;
 }
 
+/**
+ * A reservation in full, as one of its own parties reads it back through
+ * `getMyReservations`.
+ *
+ * There is no unauthenticated read that returns this shape — see
+ * {@link PublicReservation}.
+ */
 export interface Reservation {
   id: string;
   advertisement_id: string;
@@ -340,6 +347,195 @@ export interface Reservation {
   state: ReservationState;
   requested_at: TimestampMs;
   updated_at: TimestampMs;
+  expires_at: TimestampMs;
+}
+
+/**
+ * A reservation with the requester removed — what `getReservation` and
+ * `getReservations` answer.
+ *
+ * `advertisement_id` survives deliberately: an advertisement is a public
+ * offer and already carries its merchant's peer id on every order-book
+ * row, so it discloses one end of an edge that was never private. The
+ * requester is the other end, and the pair is what makes it an edge.
+ *
+ * This is a separate interface rather than `Reservation` with optional
+ * party fields, and that is the point of it: with optional fields a
+ * caller writes `reservation.requester`, gets `undefined` forever, and
+ * never discovers that `reservations.getMyReservations` would have
+ * answered. Here the compiler says so at the call site.
+ */
+export interface PublicReservation {
+  id: string;
+  advertisement_id: string;
+  amount: Amount;
+  state: ReservationState;
+  requested_at: TimestampMs;
+  updated_at: TimestampMs;
+  expires_at: TimestampMs;
+}
+
+// --- Settlements (OFS-2300) ---
+
+export type SettlementState =
+  | "AwaitingPayment"
+  | "PaymentSubmitted"
+  | "Approved"
+  | "Completed"
+  | "Rejected"
+  | "Cancelled"
+  | "Disputed";
+
+/** OFS-3000 §14's named payment-discrepancy kinds, set only on rejection. */
+export type PaymentDiscrepancy =
+  | "IncorrectAmount"
+  | "WrongReference"
+  | "DuplicatePayment"
+  | "IncorrectAccount"
+  | "Other";
+
+/**
+ * A settlement in full, as one of its own parties reads it back through
+ * `getMySettlements`. No unauthenticated read returns this shape — see
+ * {@link PublicSettlement}.
+ */
+export interface Settlement {
+  id: string;
+  reservation_id: string;
+  buyer: PeerIdBytes;
+  buyer_public_key: PublicKeyBytes;
+  seller: PeerIdBytes;
+  seller_public_key: PublicKeyBytes;
+  amount: Amount;
+  state: SettlementState;
+  /** Free text the buyer puts their own bank reference in. */
+  payment_reference: string | null;
+  escrow_release_signature: string | null;
+  payment_submitted_at: TimestampMs | null;
+  merchant_responded_at: TimestampMs | null;
+  payment_discrepancy: PaymentDiscrepancy | null;
+  created_at: TimestampMs;
+  updated_at: TimestampMs;
+}
+
+/**
+ * A settlement with the parties removed — what `getSettlement` and
+ * `getSettlements` answer. Volume, state and timing survive, which is
+ * every question an explorer actually has about a public network.
+ *
+ * `payment_reference` goes with the parties and is arguably the worse of
+ * the two to have published: it routinely carries a real name or an
+ * account number.
+ */
+export interface PublicSettlement {
+  id: string;
+  reservation_id: string;
+  amount: Amount;
+  state: SettlementState;
+  /** Kept: it names an on-chain transaction anyone can already read on
+   *  Solana, and it is what makes a settlement independently checkable. */
+  escrow_release_signature: string | null;
+  payment_submitted_at: TimestampMs | null;
+  merchant_responded_at: TimestampMs | null;
+  payment_discrepancy: PaymentDiscrepancy | null;
+  created_at: TimestampMs;
+  updated_at: TimestampMs;
+}
+
+// --- Disputes (OFS-2400) ---
+
+export type DisputeStatus = "Open" | "CaseLocked" | "RevealPhase" | "Resolved";
+
+/** §17's resolution outcomes. */
+export type Resolution = "BuyerWins" | "MerchantWins" | "MutualSettlement" | "Invalid";
+
+/** One arbitrator's vote — no `MutualSettlement`, which is a party-agreed
+ *  outcome that bypasses arbitration entirely. */
+export type Vote = "BuyerWins" | "MerchantWins" | "Invalid";
+
+export interface ArbitratorCommitment {
+  arbitrator: PeerIdBytes;
+  /** The 32-byte commitment hash, as the JSON number array `serde` produces. */
+  commitment: number[];
+}
+
+export interface ArbitratorReveal {
+  arbitrator: PeerIdBytes;
+  vote: Vote;
+}
+
+/**
+ * A dispute in full, as a party or a seated arbitrator reads it back
+ * through `getMyDisputes`. No unauthenticated read returns this shape —
+ * see {@link PublicDispute}.
+ */
+export interface Dispute {
+  id: string;
+  settlement_id: string;
+  buyer: PeerIdBytes;
+  buyer_public_key: PublicKeyBytes;
+  seller: PeerIdBytes;
+  seller_public_key: PublicKeyBytes;
+  opener: PeerIdBytes;
+  /** Free text written by whoever opened the case. */
+  reason: string;
+  status: DisputeStatus;
+  required_arbitrators: number;
+  arbitrators: PeerIdBytes[];
+  arbitrator_keys: [PeerIdBytes, PublicKeyBytes][];
+  commitments: ArbitratorCommitment[];
+  reveals: ArbitratorReveal[];
+  resolution: Resolution | null;
+  buyer_agreed_mutual_settlement: boolean;
+  seller_agreed_mutual_settlement: boolean;
+  onchain_execution_signature: string | null;
+  opened_at: TimestampMs;
+  updated_at: TimestampMs;
+}
+
+/**
+ * A dispute with the parties, the arbitrators and their votes removed —
+ * what `getDispute` and `getDisputes` answer.
+ *
+ * An arbitrator is a registered provider and their identity is not itself
+ * a secret, but *which arbitrator drew which case, and how they voted* is
+ * exactly the pairing that makes pressuring one worthwhile. Counts
+ * survive so a case can be seen progressing; the pairing does not. The
+ * mutual-settlement flags go with them — "the seller has agreed and the
+ * buyer has not" is a negotiating position.
+ */
+export interface PublicDispute {
+  id: string;
+  settlement_id: string;
+  status: DisputeStatus;
+  required_arbitrators: number;
+  /** How many seats are filled, without saying by whom. */
+  arbitrators_seated: number;
+  commitments: number;
+  reveals: number;
+  /** The outcome, which is the point of the case and is enforced on chain
+   *  where anyone can read it anyway. */
+  resolution: Resolution | null;
+  onchain_execution_signature: string | null;
+  opened_at: TimestampMs;
+  updated_at: TimestampMs;
+}
+
+// --- Wallet proofs, for the reads that are not everyone's ---
+
+/**
+ * A single-use, expiring challenge bound to one wallet, issued by
+ * `getWalletChallenge`.
+ *
+ * `subject` is the node's own canonical base64 spelling of the wallet and
+ * is signed verbatim, so a caller echoes it back rather than re-encoding
+ * their own peer id: two spellings that decode to the same bytes still
+ * produce different signing bytes.
+ */
+export interface WalletChallenge {
+  subject: string;
+  /** 32 random bytes, hex-encoded. */
+  nonce: string;
   expires_at: TimestampMs;
 }
 
