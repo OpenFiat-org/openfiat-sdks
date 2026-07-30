@@ -1,7 +1,14 @@
 import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 
 import { enumTag, fixedBytes, i64LE, instructionData, meta, u16LE, u64LE } from "./codec.js";
-import { banRecordPda, ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, Role, TOKEN_2022_PROGRAM_ID } from "./constants.js";
+import {
+  banRecordPda,
+  ESCROW_PROGRAM_ID,
+  RENT_SYSVAR_ID,
+  Role,
+  SLOT_HASHES_SYSVAR_ID,
+  TOKEN_2022_PROGRAM_ID,
+} from "./constants.js";
 import type { DisputeOutcome } from "./constants.js";
 import { stakeAccountPda, stakingConfigPda } from "./staking.js";
 
@@ -146,6 +153,20 @@ export interface UpdateFeeConfigParams {
   infraTreasuryBps: number;
   emergencyReserveBps: number;
   timeoutSecs: bigint;
+  /**
+   * Arbitrator stake age in seconds; `0n` disables the gate. This
+   * instruction is the only path by which OFS-4100 §4's 30 days is turned
+   * on — both eligibility gates deploy disabled, because neither can be
+   * satisfied by anybody on a chain younger than the requirement it
+   * imposes.
+   */
+  minArbitratorStakeAgeSecs: bigint;
+  /**
+   * Opening sortition threshold in basis points; `0` disables the draw.
+   * Must be below 10_000 — the program rejects a value that would admit
+   * every wallet rather than accepting "disabled" written unclearly.
+   */
+  arbitratorSortitionBps: number;
 }
 
 /**
@@ -190,6 +211,10 @@ export function updateFeeConfigIx(
       u16LE(params.infraTreasuryBps),
       u16LE(params.emergencyReserveBps),
       i64LE(params.timeoutSecs),
+      // Appended last, matching declaration order in the program's own
+      // params struct — Borsh has no field names, so order is the format.
+      i64LE(params.minArbitratorStakeAgeSecs),
+      u16LE(params.arbitratorSortitionBps),
     ),
   });
 }
@@ -452,16 +477,20 @@ export function openDisputeCaseIx(
       meta(arbitrationPool, false, true),
       meta(TOKEN_2022_PROGRAM_ID, false, false),
       meta(SystemProgram.programId, false, false),
+      meta(SLOT_HASHES_SYSVAR_ID, false, false),
     ],
     data: instructionData(DISCRIMINATORS.openDisputeCase, i64LE(commitWindowSecs), i64LE(revealWindowSecs)),
   });
 }
 
 /**
- * Committing requires the arbitrator to hold the Arbitrator role's
- * minimum stake — the program reads both the staking config and the
- * caller's own stake account to check it. Both are PDAs, so they are
- * derived here rather than asked for.
+ * Committing is gated on three things (OFS-4100 §4, §4.1): the Arbitrator
+ * role's minimum stake, the age of that stake, and a per-case sortition
+ * draw. The program reads the staking config and the caller's own stake
+ * account for the first two, and the escrow `FeeConfig` — which holds both
+ * eligibility parameters, so governance can retune them without a redeploy
+ * — for the age threshold and the draw. All are PDAs, so they are derived
+ * here rather than asked for.
  */
 export function commitDisputeVoteIx(
   arbitrator: PublicKey,
@@ -471,6 +500,7 @@ export function commitDisputeVoteIx(
   const [disputeCase] = disputeCasePda(reservationId);
   const [stakingConfig] = stakingConfigPda();
   const [arbitratorStake] = stakeAccountPda(arbitrator, Role.Arbitrator);
+  const [feeConfig] = feeConfigPda();
   return new TransactionInstruction({
     programId: ESCROW_PROGRAM_ID,
     keys: [
@@ -478,6 +508,7 @@ export function commitDisputeVoteIx(
       meta(disputeCase, false, true),
       meta(stakingConfig, false, false),
       meta(arbitratorStake, false, false),
+      meta(feeConfig, false, false),
     ],
     data: instructionData(DISCRIMINATORS.commitDisputeVote, fixedBytes(commitment, 32)),
   });
@@ -550,6 +581,10 @@ export function executeDisputeOutcomeIx(
       meta(merchantOpenVault, false, true),
       meta(merchantOpenTokenVault, false, true),
       meta(TOKEN_2022_PROGRAM_ID, false, false),
+      // Passed even though a round that decides never touches it: a round
+      // that falls short re-draws the case seed, and Anchor's account list
+      // is fixed per instruction rather than per branch.
+      meta(SLOT_HASHES_SYSVAR_ID, false, false),
     ],
     data: instructionData(DISCRIMINATORS.executeDisputeOutcome),
   });

@@ -35,6 +35,7 @@ import {
   ESCROW_PROGRAM_ID,
   RENT_SYSVAR_ID,
   Role,
+  SLOT_HASHES_SYSVAR_ID,
   TOKEN_2022_PROGRAM_ID,
 } from "../src/onchain/constants.js";
 import { stakeAccountPda, stakingConfigPda } from "../src/onchain/staking.js";
@@ -360,14 +361,21 @@ describe("escrow instructions", () => {
       { pubkey: arbitrationPool, isSigner: false, isWritable: true },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      // Seeds this case's arbitrator draw. Without it the program cannot
+      // seed the draw at all, and the address must be exact — a wrong one
+      // is rejected on-chain rather than silently yielding a predictable
+      // seed.
+      { pubkey: SLOT_HASHES_SYSVAR_ID, isSigner: false, isWritable: false },
     ]);
   });
 
-  it("commitDisputeVoteIx carries the stake accounts the eligibility gate reads", () => {
-    // The program rejects a commit from a wallet below the Arbitrator
-    // minimum. It can only check that with both accounts present, so
-    // omitting either makes every commit fail to deserialize rather than
-    // quietly skip the check.
+  it("commitDisputeVoteIx carries every account the three eligibility gates read", () => {
+    // Three gates guard a commit (OFS-4100 §4, §4.1): the Arbitrator stake
+    // minimum, the age of that stake, and the per-case sortition draw. The
+    // program can only check them with all of these present, so omitting any
+    // makes every commit fail to deserialize rather than quietly skip a
+    // check. `feeConfig` is where the age threshold and the draw threshold
+    // live, so governance can retune both without a redeploy.
     const arbitrator = fakePubkey(21);
     const commitment = new Uint8Array(32).fill(7);
     const ix = commitDisputeVoteIx(arbitrator, reservationId, commitment);
@@ -375,11 +383,13 @@ describe("escrow instructions", () => {
     const [disputeCase] = disputeCasePda(reservationId);
     const [stakingConfig] = stakingConfigPda();
     const [arbitratorStake] = stakeAccountPda(arbitrator, Role.Arbitrator);
+    const [commitFeeConfig] = feeConfigPda();
     expectAccounts(ix, [
       { pubkey: arbitrator, isSigner: true, isWritable: false },
       { pubkey: disputeCase, isSigner: false, isWritable: true },
       { pubkey: stakingConfig, isSigner: false, isWritable: false },
       { pubkey: arbitratorStake, isSigner: false, isWritable: false },
+      { pubkey: commitFeeConfig, isSigner: false, isWritable: false },
     ]);
     expect(Array.from(ix.data.subarray(8, 40))).toEqual(Array.from(commitment));
   });
@@ -430,6 +440,10 @@ describe("escrow instructions", () => {
       { pubkey: liquidityVaultPda(merchant, depositMint)[0], isSigner: false, isWritable: true },
       { pubkey: liquidityVaultTokensPda(merchant, depositMint)[0], isSigner: false, isWritable: true },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      // Carried even though a round that decides never touches it: a round
+      // that falls short re-draws the case seed, and Anchor's account list
+      // is fixed per instruction rather than per branch.
+      { pubkey: SLOT_HASHES_SYSVAR_ID, isSigner: false, isWritable: false },
     ]);
   });
 
@@ -451,6 +465,10 @@ describe("escrow instructions", () => {
       infraTreasuryBps: 2_000,
       emergencyReserveBps: 1_000,
       timeoutSecs: 1_800n,
+      // Non-zero so the length assertion below would still catch these
+      // being dropped from the payload.
+      minArbitratorStakeAgeSecs: 2_592_000n,
+      arbitratorSortitionBps: 100,
     });
     expectDiscriminator(ix, [104, 184, 103, 242, 88, 151, 107, 20]);
     const [feeConfig] = feeConfigPda();
@@ -464,7 +482,7 @@ describe("escrow instructions", () => {
       { pubkey: treasuries.emergencyReserve, isSigner: false, isWritable: false },
     ]);
     // Treasury pubkeys must NOT appear in the data — they come from accounts.
-    expect(ix.data.length).toBe(8 + 8 + 8 + 2 + 2 + 2 + 2 + 2 + 8);
+    expect(ix.data.length).toBe(8 + 8 + 8 + 2 + 2 + 2 + 2 + 2 + 8 + 8 + 2);
     expect(ix.data.readBigUInt64LE(8)).toBe(7n);
     expect(ix.data.readBigUInt64LE(16)).toBe(9n);
     expect(ix.data.readUInt16LE(24)).toBe(15);

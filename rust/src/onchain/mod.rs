@@ -40,6 +40,11 @@ pub const TOKEN_2022_PROGRAM_ID: Pubkey = pubkey!("TokenzQdBNbLqP5VEhdkAS6EPFLC1
 /// The Rent sysvar — required by every `init`-ing instruction (account
 /// creation reads it for rent-exemption).
 pub const RENT_SYSVAR_ID: Pubkey = pubkey!("SysvarRent111111111111111111111111111111111");
+/// The SlotHashes sysvar — read by the dispute instructions that latch a
+/// case's arbitrator-sortition seed (OFS-4100 §4.1). Passed as an account
+/// rather than fetched in-program because it is far too large to
+/// deserialize there.
+pub const SLOT_HASHES_SYSVAR_ID: Pubkey = pubkey!("SysvarS1otHashes111111111111111111111111111");
 
 /// The System Program's id is the all-zero `Pubkey` by construction —
 /// no separate constant needed. `solana_pubkey::Pubkey::default()`

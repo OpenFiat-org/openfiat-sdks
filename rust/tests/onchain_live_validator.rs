@@ -158,15 +158,35 @@ async fn initialize_stake_account_ix_is_accepted_by_the_real_staking_program() {
 
     // Layout matches `openfiat-core/crates/rpc/src/onchain_stake.rs`'s
     // own decoder exactly: discriminator(8) + owner(32) + role(1) +
-    // amount(8) — independently confirms the real program wrote the
-    // owner and a zero starting stake, not just that *some* account
+    // amount(8) + unbonding_amount(8) + unbonding_release_at(8) +
+    // slashed_total(8) + pending_rewards(8) + bump(1) +
+    // first_staked_at(8) — independently confirms the real program wrote
+    // the owner and a zero starting stake, not just that *some* account
     // exists at this address.
-    assert_eq!(account.data.len(), 8 + 32 + 1 + 8 + 8 + 8 + 8 + 8 + 1);
+    //
+    // `first_staked_at` (OFS-4100 §4's arbitrator stake-age clock) is
+    // appended after `bump` rather than sitting in declaration order,
+    // which is what let the live devnet accounts be migrated by a resize
+    // alone. This assertion caught that layout change from another repo,
+    // which is exactly what it is for — so it is kept exact rather than
+    // relaxed to a lower bound.
+    assert_eq!(account.data.len(), 8 + 32 + 1 + 8 + 8 + 8 + 8 + 8 + 1 + 8);
     assert_eq!(&account.data[8..40], owner.pubkey().to_bytes());
     assert_eq!(account.data[40], Role::Merchant as u8);
     let amount = u64::from_le_bytes(account.data[41..49].try_into().unwrap());
     assert_eq!(
         amount, 0,
         "a freshly initialized stake account has zero staked"
+    );
+
+    // Zero, not the current clock. An age that began before any tokens
+    // were locked would let an attacker open accounts now and fund them
+    // thirty days later at no cost, which is the whole thing the age
+    // requirement exists to prevent — so this is a security invariant,
+    // not a default value.
+    let first_staked_at = i64::from_le_bytes(account.data[82..90].try_into().unwrap());
+    assert_eq!(
+        first_staked_at, 0,
+        "an account holding no stake must carry no stake age"
     );
 }
