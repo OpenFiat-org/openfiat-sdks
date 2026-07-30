@@ -9,8 +9,8 @@
 //! `reservation_id`, `FeeConfig` is a singleton.
 
 use super::{
-    DisputeOutcome, ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, Role, TOKEN_2022_PROGRAM_ID,
-    instruction_data, system_program_id,
+    DisputeOutcome, ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, Role, SLOT_HASHES_SYSVAR_ID,
+    TOKEN_2022_PROGRAM_ID, instruction_data, system_program_id,
 };
 use crate::onchain::staking;
 use borsh::BorshSerialize;
@@ -108,6 +108,11 @@ struct UpdateFeeConfigParams {
     infra_treasury_bps: u16,
     emergency_reserve_bps: u16,
     timeout_secs: i64,
+    // Field order is the wire format — Borsh has no field names — so these
+    // two are appended last, matching their declaration order in the
+    // program's own `UpdateFeeConfigParams`.
+    min_arbitrator_stake_age_secs: i64,
+    arbitrator_sortition_bps: u16,
 }
 
 /// Corrects the singleton `FeeConfig` after initialization (admin-only).
@@ -117,6 +122,19 @@ struct UpdateFeeConfigParams {
 /// so a wallet address cannot be stored where a token account is required.
 /// That is deliberate — the devnet config was originally initialized with
 /// treasury owner wallets, which made every `release_escrow` unexecutable.
+///
+/// # The two arbitrator-eligibility parameters
+///
+/// `min_arbitrator_stake_age_secs` and `arbitrator_sortition_bps` (OFS-4100
+/// §4, §4.1) gate who may commit a dispute vote. This instruction is the
+/// **only** path by which either is turned on: both deploy disabled,
+/// because neither can be satisfied by anybody on a chain younger than the
+/// requirement it imposes — on day one no wallet has held stake for thirty
+/// days, and a 1/100 draw over a ten-wallet pool leaves nobody eligible.
+///
+/// Zero disables each. `arbitrator_sortition_bps` must be below 10_000; the
+/// program rejects a value that would admit every wallet rather than
+/// silently accepting "disabled" written unclearly.
 #[allow(clippy::too_many_arguments)]
 pub fn update_fee_config_ix(
     admin: &Pubkey,
@@ -133,6 +151,8 @@ pub fn update_fee_config_ix(
     infra_treasury_bps: u16,
     emergency_reserve_bps: u16,
     timeout_secs: i64,
+    min_arbitrator_stake_age_secs: i64,
+    arbitrator_sortition_bps: u16,
 ) -> Instruction {
     let (fee_config, _) = fee_config_pda();
     let data = instruction_data(
@@ -146,6 +166,8 @@ pub fn update_fee_config_ix(
             infra_treasury_bps,
             emergency_reserve_bps,
             timeout_secs,
+            min_arbitrator_stake_age_secs,
+            arbitrator_sortition_bps,
         },
     );
     Instruction::new_with_bytes(
@@ -592,15 +614,18 @@ pub fn open_dispute_case_ix(
             AccountMeta::new(arbitration_pool, false),
             AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
             AccountMeta::new_readonly(system_program_id(), false),
+            AccountMeta::new_readonly(SLOT_HASHES_SYSVAR_ID, false),
         ],
     )
 }
 
-/// Committing requires the arbitrator to hold the `Arbitrator` role's
-/// minimum stake, so the program reads both the staking config and this
-/// arbitrator's own `StakeAccount`. Both are PDAs owned by the *staking*
-/// program (`seeds::program = staking::ID` on-chain) and are derived here
-/// rather than passed in.
+/// Committing is gated on three things (OFS-4100 §4, §4.1): the
+/// `Arbitrator` role's minimum stake, the age of that stake, and a per-case
+/// sortition draw. The program therefore reads the staking config, this
+/// arbitrator's own `StakeAccount` — both PDAs owned by the *staking*
+/// program (`seeds::program = staking::ID` on-chain), derived here rather
+/// than passed in — and the escrow `FeeConfig`, which holds the two
+/// eligibility parameters so governance can retune them without a redeploy.
 pub fn commit_dispute_vote_ix(
     arbitrator: &Pubkey,
     reservation_id: u64,
@@ -609,6 +634,7 @@ pub fn commit_dispute_vote_ix(
     let (dispute_case, _) = dispute_case_pda(reservation_id);
     let (staking_config, _) = staking::staking_config_pda();
     let (arbitrator_stake, _) = staking::stake_account_pda(arbitrator, Role::Arbitrator);
+    let (fee_config, _) = fee_config_pda();
     let data = instruction_data([210, 14, 34, 127, 75, 185, 189, 168], commitment);
     Instruction::new_with_bytes(
         ESCROW_PROGRAM_ID,
@@ -618,6 +644,7 @@ pub fn commit_dispute_vote_ix(
             AccountMeta::new(dispute_case, false),
             AccountMeta::new_readonly(staking_config, false),
             AccountMeta::new_readonly(arbitrator_stake, false),
+            AccountMeta::new_readonly(fee_config, false),
         ],
     )
 }
@@ -694,6 +721,10 @@ pub fn execute_dispute_outcome_ix(
             AccountMeta::new(merchant_open_vault, false),
             AccountMeta::new(merchant_open_token_vault, false),
             AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            // Passed even though a round that decides never touches it: a
+            // round that falls short re-draws the case seed, and Anchor's
+            // account list is fixed per instruction rather than per branch.
+            AccountMeta::new_readonly(SLOT_HASHES_SYSVAR_ID, false),
         ],
     )
 }
@@ -711,12 +742,30 @@ mod tests {
         let infra = Pubkey::new_unique();
         let emergency = Pubkey::new_unique();
         let ix = update_fee_config_ix(
-            &admin, &mint, &dev, &eco, &infra, &emergency, 7, 9, 15, 4_000, 3_000, 2_000, 1_000,
+            &admin,
+            &mint,
+            &dev,
+            &eco,
+            &infra,
+            &emergency,
+            7,
+            9,
+            15,
+            4_000,
+            3_000,
+            2_000,
+            1_000,
             1_800,
+            // The two arbitrator-eligibility gates, appended last in the
+            // wire format. Non-zero here so the length assertion below would
+            // still catch them being dropped from the payload.
+            30 * 24 * 60 * 60,
+            100,
         );
         assert_eq!(&ix.data[..8], &[104, 184, 103, 242, 88, 151, 107, 20]);
-        // 8 disc + 8 + 8 + 2*5 + 8 — no 32-byte pubkeys in the payload.
-        assert_eq!(ix.data.len(), 8 + 8 + 8 + 2 + 2 + 2 + 2 + 2 + 8);
+        // 8 disc + u64*2 + u16*5 + i64 + i64 + u16 — no 32-byte pubkeys in
+        // the payload; every treasury travels as an account.
+        assert_eq!(ix.data.len(), 8 + 8 + 8 + 2 + 2 + 2 + 2 + 2 + 8 + 8 + 2);
 
         let (fee_config, _) = fee_config_pda();
         let keys: Vec<Pubkey> = ix.accounts.iter().map(|a| a.pubkey).collect();
@@ -897,13 +946,14 @@ mod tests {
 
     #[test]
     fn commit_dispute_vote_carries_the_stake_accounts_the_eligibility_gate_reads() {
-        // The program rejects a commit from a wallet below the Arbitrator
-        // minimum, which it can only check if both of these are present —
-        // omitting either would make every commit fail deserialization
-        // rather than merely skip the check.
+        // Three gates now guard a commit (OFS-4100 §4, §4.1): the Arbitrator
+        // stake minimum, the age of that stake, and the per-case sortition
+        // draw. The program can only check them if all of these accounts are
+        // present — omitting any would make every commit fail
+        // deserialization rather than merely skip a check.
         let arbitrator = Pubkey::new_unique();
         let ix = commit_dispute_vote_ix(&arbitrator, 1, [0u8; 32]);
-        assert_eq!(ix.accounts.len(), 4);
+        assert_eq!(ix.accounts.len(), 5);
 
         let (expected_config, _) = staking::staking_config_pda();
         assert_eq!(ix.accounts[2].pubkey, expected_config);
@@ -915,6 +965,49 @@ mod tests {
         assert_eq!(ix.accounts[3].pubkey, expected_stake);
         assert!(!ix.accounts[3].is_signer);
         assert!(!ix.accounts[3].is_writable);
+
+        // `fee_config` holds both eligibility parameters, so the gates follow
+        // a governance change with no redeploy of the escrow program.
+        let (expected_fee_config, _) = fee_config_pda();
+        assert_eq!(ix.accounts[4].pubkey, expected_fee_config);
+        assert!(!ix.accounts[4].is_signer);
+        assert!(!ix.accounts[4].is_writable);
+    }
+
+    #[test]
+    fn the_dispute_instructions_that_draw_a_seed_carry_the_slot_hashes_sysvar() {
+        // Both instructions latch a case's sortition seed from a recent slot
+        // hash. Without the sysvar the program cannot seed the draw at all,
+        // and the address must be exact — a wrong one is rejected by the
+        // `address = SlotHashes::id()` constraint rather than silently
+        // producing a predictable seed.
+        let open = open_dispute_case_ix(
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            1,
+            60,
+            60,
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+        );
+        assert_eq!(open.accounts.last().unwrap().pubkey, SLOT_HASHES_SYSVAR_ID);
+
+        let execute = execute_dispute_outcome_ix(
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            1,
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+        );
+        assert_eq!(
+            execute.accounts.last().unwrap().pubkey,
+            SLOT_HASHES_SYSVAR_ID
+        );
+        assert!(!execute.accounts.last().unwrap().is_writable);
     }
 
     #[test]

@@ -13,6 +13,13 @@ export const GOVERNANCE_PROGRAM_ID = new PublicKey("AVJfKUjHsizkGGUy8sdz4Xma2hVg
 /** Every account these programs custody is a Token-2022 mint (OFS-4200 §1). */
 export const TOKEN_2022_PROGRAM_ID = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 export const RENT_SYSVAR_ID = new PublicKey("SysvarRent111111111111111111111111111111111");
+/**
+ * The SlotHashes sysvar — read by the dispute instructions that latch a
+ * case's arbitrator-sortition seed (OFS-4100 §4.1). Passed as an account
+ * rather than fetched in-program because it is far too large to
+ * deserialize there.
+ */
+export const SLOT_HASHES_SYSVAR_ID = new PublicKey("SysvarS1otHashes111111111111111111111111111");
 
 /**
  * A staked/bonded protocol role (OFS-4200 §2) — `openfiat-staking`'s
