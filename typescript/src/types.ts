@@ -256,6 +256,33 @@ export interface SignedAdvertisementCreate {
   signature: SignatureBytes;
 }
 
+/** §18/§21: a merchant taking their own ad down — the only lifecycle
+ *  transition besides creation and repricing a merchant can trigger. */
+export interface AdvertisementDisable {
+  id: string;
+  merchant: PeerIdBytes;
+  timestamp: TimestampMs;
+}
+
+export interface SignedAdvertisementDisable {
+  disable: AdvertisementDisable;
+  signature: SignatureBytes;
+}
+
+/** §17's "Price changes" refresh trigger: repricing an existing ad in
+ *  place instead of disabling and recreating it. */
+export interface AdvertisementPriceUpdate {
+  id: string;
+  merchant: PeerIdBytes;
+  pricing: PricingModel;
+  timestamp: TimestampMs;
+}
+
+export interface SignedAdvertisementPriceUpdate {
+  update: AdvertisementPriceUpdate;
+  signature: SignatureBytes;
+}
+
 export interface Advertisement {
   id: string;
   merchant: PeerIdBytes;
