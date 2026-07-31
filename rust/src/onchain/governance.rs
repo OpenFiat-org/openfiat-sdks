@@ -21,6 +21,7 @@ const DEPOSIT_VAULT_SEED: &[u8] = b"deposit_vault";
 const PROPOSAL_SEED: &[u8] = b"proposal";
 const VOTE_RECORD_SEED: &[u8] = b"vote";
 const PROPOSAL_ACTION_SEED: &[u8] = b"proposal_action";
+const EMERGENCY_AUTHORITY_SEED: &[u8] = b"emergency_authority";
 
 /// What a proposal, if it passes, is authorized to *do* (OFS-4200 §6,
 /// OFS-7100 §12.2) — `governance::state::GovernanceAction`.
@@ -47,6 +48,16 @@ pub enum GovernanceAction {
     DelistWallet {
         wallet: Pubkey,
     },
+}
+
+/// `[EMERGENCY_AUTHORITY_SEED]` — the singleton holding AllenHark's
+/// first-year exception and the timestamp it expires at (OFS-4100 §5.1).
+///
+/// Read-only to every instruction except the two that create it, which
+/// is precisely what makes the deadline non-extendable: there is no
+/// transaction anyone can send that moves `expires_at`.
+pub fn emergency_authority_pda() -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[EMERGENCY_AUTHORITY_SEED], &GOVERNANCE_PROGRAM_ID)
 }
 
 /// `[PROPOSAL_ACTION_SEED, proposal]` — one action per proposal, and one
@@ -135,6 +146,10 @@ pub fn initialize_governance_config_ix(
             AccountMeta::new_readonly(*mint, false),
             AccountMeta::new(governance_config, false),
             AccountMeta::new(deposit_vault, false),
+            // Created here too, so a fresh deployment's sunset clock
+            // starts at governance genesis. It takes no parameters,
+            // which is why this signature is unchanged.
+            AccountMeta::new(emergency_authority_pda().0, false),
             AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
             AccountMeta::new_readonly(system_program_id(), false),
             AccountMeta::new_readonly(super::RENT_SYSVAR_ID, false),
@@ -198,6 +213,71 @@ pub fn update_governance_config_ix(
             AccountMeta::new(governance_config, false),
             AccountMeta::new_readonly(*mint, false),
             AccountMeta::new_readonly(*forfeit_destination, false),
+            // Read-only. Past its `expires_at` the program refuses any
+            // change to `vote_lock_secs` — OFS-4100 §5.1's sunset on the
+            // delay power. Every other field stays writable forever.
+            AccountMeta::new_readonly(emergency_authority_pda().0, false),
+        ],
+    )
+}
+
+/// Starts AllenHark's first-year governance exception on a deployment
+/// whose `GovernanceConfig` predates it (OFS-4100 §5.1, OFS-4200 §6.2).
+///
+/// Permissionless and parameterless, and both on purpose. With no
+/// arguments there is nothing a caller can pass that lengthens the window
+/// — the holders are compiled into the program and the deadline is
+/// `now + one year` — so the only thing this influences is *when* the
+/// clock starts, which can only bring the deadline nearer. Permissionless
+/// means no key can withhold the start in order to keep the expiry
+/// perpetually ahead of itself.
+///
+/// Callable exactly once per deployment: it `init`s the account, so a
+/// second call fails. A fresh deployment never needs it, since
+/// [`initialize_governance_config_ix`] creates the same account.
+///
+/// `payer` funds rent and gains nothing by paying it.
+pub fn initialize_emergency_authority_ix(payer: &Pubkey) -> Instruction {
+    Instruction::new_with_bytes(
+        GOVERNANCE_PROGRAM_ID,
+        &[93, 231, 250, 142, 49, 224, 152, 213],
+        vec![
+            AccountMeta::new(*payer, true),
+            AccountMeta::new(emergency_authority_pda().0, false),
+            AccountMeta::new_readonly(system_program_id(), false),
+        ],
+    )
+}
+
+/// Declares which off-chain proposal this on-chain one is the chain-side
+/// half of (OFS-4200 §6.1).
+///
+/// `offchain_id_hash` is the **SHA-256 of the off-chain proposal id's
+/// UTF-8 bytes** — nothing else matches. The off-chain proposal must
+/// already name this proposal's `id` in its own signed `ProposalCreate`
+/// event: the link is two reciprocal claims, and a node holding only one
+/// reports it as unreciprocated rather than joining the records.
+/// Publishing one side without the other achieves nothing.
+///
+/// Proposer-only, `Voting`-only, and write-once. An all-zero digest is
+/// refused by the program, because that value is its "nothing claimed"
+/// sentinel and storing it would spend the single write while leaving
+/// the proposal looking unlinked forever.
+pub fn link_offchain_proposal_ix(
+    proposer: &Pubkey,
+    proposal_id: u64,
+    offchain_id_hash: [u8; 32],
+) -> Instruction {
+    let (proposal, _) = proposal_pda(proposal_id);
+    let mut data = Vec::with_capacity(40);
+    data.extend_from_slice(&[175, 29, 244, 214, 83, 241, 103, 128]);
+    data.extend_from_slice(&offchain_id_hash);
+    Instruction::new_with_bytes(
+        GOVERNANCE_PROGRAM_ID,
+        &data,
+        vec![
+            AccountMeta::new_readonly(*proposer, true),
+            AccountMeta::new(proposal, false),
         ],
     )
 }
@@ -448,6 +528,81 @@ pub fn delist_wallet_ix(submitter: &Pubkey, proposal_id: u64, wallet: &Pubkey) -
 mod tests {
     use super::*;
 
+    /// OFS-4100 §5.1's sunset is enforced against this account, so an
+    /// instruction that omitted it would be rejected by the program —
+    /// and a builder that placed it anywhere but last would send the
+    /// program somebody else's account under its name.
+    #[test]
+    fn config_instructions_carry_the_emergency_authority_the_sunset_is_read_from() {
+        let admin = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let destination = Pubkey::new_unique();
+        let (emergency_authority, _) = emergency_authority_pda();
+
+        let update = update_governance_config_ix(
+            &admin,
+            &mint,
+            &destination,
+            1_000_000,
+            1_000,
+            5_000,
+            6_000,
+            6_600,
+            2_000,
+            5_000,
+            604_800,
+        );
+        let last = update.accounts.last().expect("accounts are not empty");
+        assert_eq!(last.pubkey, emergency_authority);
+        assert!(
+            !last.is_writable,
+            "the sunset must be read, never written — a writable reference here would be a \
+             path to moving the deadline"
+        );
+
+        let initialize = initialize_governance_config_ix(
+            &admin,
+            &mint,
+            1_000_000,
+            1_000,
+            5_000,
+            6_000,
+            6_600,
+            2_000,
+            5_000,
+            &destination,
+            604_800,
+        );
+        let position = initialize
+            .accounts
+            .iter()
+            .position(|account| account.pubkey == emergency_authority)
+            .expect("a fresh deployment must create the sunset alongside the config");
+        assert_eq!(
+            position, 4,
+            "account order is positional; the program reads slot 4 as the emergency authority"
+        );
+        assert!(
+            initialize.accounts[position].is_writable,
+            "init writes it once"
+        );
+    }
+
+    /// The digest is the join key, and it is fixed-width by definition.
+    /// A short or long one would be silently truncated or overrun by the
+    /// program's Borsh decoder, producing a link nothing ever matches.
+    #[test]
+    fn a_link_carries_exactly_the_thirty_two_byte_digest() {
+        let ix = link_offchain_proposal_ix(&Pubkey::new_unique(), 42, [9u8; 32]);
+        assert_eq!(ix.data.len(), 8 + 32);
+        assert_eq!(&ix.data[8..], &[9u8; 32]);
+        assert_eq!(ix.accounts[1].pubkey, proposal_pda(42).0);
+        assert!(
+            ix.accounts[0].is_signer && !ix.accounts[0].is_writable,
+            "the proposer signs; it is not the account being written"
+        );
+    }
+
     #[test]
     fn update_governance_config_takes_the_destination_as_an_account() {
         let admin = Pubkey::new_unique();
@@ -470,7 +625,15 @@ mod tests {
         assert_eq!(&ix.data[..8], &[140, 45, 181, 17, 77, 67, 157, 248]);
 
         let (governance_config, _) = governance_config_pda();
-        let expected = [admin, governance_config, mint, forfeit_destination];
+        // The emergency authority joined this list when OFS-4100 §5.1's
+        // sunset started being enforced here — read-only, and last.
+        let expected = [
+            admin,
+            governance_config,
+            mint,
+            forfeit_destination,
+            emergency_authority_pda().0,
+        ];
         let actual: Vec<Pubkey> = ix.accounts.iter().map(|a| a.pubkey).collect();
         assert_eq!(actual, expected);
         // Only the admin signs; the destination rides along as a plain
@@ -565,6 +728,14 @@ mod tests {
             (
                 tally_and_finalize_ix(1),
                 [21, 190, 147, 204, 51, 17, 163, 150],
+            ),
+            (
+                initialize_emergency_authority_ix(&admin),
+                [93, 231, 250, 142, 49, 224, 152, 213],
+            ),
+            (
+                link_offchain_proposal_ix(&admin, 1, [7u8; 32]),
+                [175, 29, 244, 214, 83, 241, 103, 128],
             ),
             (
                 refund_or_forfeit_deposit_ix(

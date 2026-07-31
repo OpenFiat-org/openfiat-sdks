@@ -8,6 +8,9 @@ import {
   delistWalletIx,
   depositVaultPda,
   governanceConfigPda,
+  emergencyAuthorityPda,
+  initializeEmergencyAuthorityIx,
+  linkOffchainProposalIx,
   listWalletIx,
   noAction,
   updateGovernanceConfigIx,
@@ -86,6 +89,10 @@ describe("governance instructions", () => {
       { pubkey: mint, isSigner: false, isWritable: false },
       { pubkey: governanceConfig, isSigner: false, isWritable: true },
       { pubkey: depositVault, isSigner: false, isWritable: true },
+      // A fresh deployment's sunset clock starts here, at governance
+      // genesis (OFS-4100 §5.1). No new params: the deadline is derived,
+      // never supplied.
+      { pubkey: emergencyAuthorityPda()[0], isSigner: false, isWritable: true },
       { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: RENT_SYSVAR_ID, isSigner: false, isWritable: false },
@@ -220,6 +227,10 @@ describe("governance instructions", () => {
       { pubkey: governanceConfig, isSigner: false, isWritable: true },
       { pubkey: mint, isSigner: false, isWritable: false },
       { pubkey: forfeitDestination, isSigner: false, isWritable: false },
+      // Read-only, and that is the point: this instruction enforces the
+      // sunset, it does not administer it. Past `expiresAt` the program
+      // refuses any change to `voteLockSecs`.
+      { pubkey: emergencyAuthorityPda()[0], isSigner: false, isWritable: false },
     ]);
 
     // Every field pinned at its offset. The params struct is eight numbers
@@ -334,5 +345,57 @@ describe("ban list (OFS-7100 §12)", () => {
     expect(encoded.slice(1, 33)).not.toEqual(Array.from(other.toBytes()));
     expect(encoded[33]).toBe(BanReason.Sanctions);
     expect(encoded.slice(34, 66)).toEqual(Array.from(evidenceHash));
+  });
+});
+
+describe("AllenHark's first-year exception (OFS-4100 §5.1)", () => {
+  it("initializeEmergencyAuthorityIx takes no arguments that could lengthen the window", () => {
+    // The sunset is non-extendable by construction, and this is the
+    // construction: with no instruction data beyond the discriminator,
+    // there is nothing a caller can pass that changes how long the
+    // exception lasts. The only thing a sender influences is when the
+    // clock starts, which can only bring the deadline nearer.
+    const payer = fakePubkey(90);
+    const ix = initializeEmergencyAuthorityIx(payer);
+    expectDiscriminator(ix, [93, 231, 250, 142, 49, 224, 152, 213]);
+    expect(ix.data.length).toBe(8);
+    expectAccounts(ix, [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: emergencyAuthorityPda()[0], isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ]);
+  });
+
+  it("derives the singleton from its constant seed", () => {
+    const [expected] = PublicKey.findProgramAddressSync(
+      [Buffer.from("emergency_authority")],
+      GOVERNANCE_PROGRAM_ID,
+    );
+    expect(emergencyAuthorityPda()[0].equals(expected)).toBe(true);
+  });
+});
+
+describe("linkOffchainProposalIx", () => {
+  it("carries exactly the 32-byte digest, against the proposal's own PDA", () => {
+    const proposer = fakePubkey(91);
+    const digest = new Uint8Array(32).fill(9);
+    const ix = linkOffchainProposalIx(proposer, 42n, digest);
+    expectDiscriminator(ix, [175, 29, 244, 214, 83, 241, 103, 128]);
+    expect(ix.data.length).toBe(8 + 32);
+    expect([...ix.data.subarray(8)]).toEqual([...digest]);
+    expectAccounts(ix, [
+      { pubkey: proposer, isSigner: true, isWritable: false },
+      { pubkey: proposalPda(42n)[0], isSigner: false, isWritable: true },
+    ]);
+  });
+
+  it("refuses a digest that is not 32 bytes", () => {
+    // A short or long digest would be silently truncated or would overrun
+    // the program's Borsh decoder, producing a link nothing ever matches
+    // — a failure that shows up as "the chain never agrees" rather than
+    // as an error.
+    expect(() =>
+      linkOffchainProposalIx(fakePubkey(92), 1n, new Uint8Array(31)),
+    ).toThrow(/32-byte/);
   });
 });

@@ -25,6 +25,7 @@ const DEPOSIT_VAULT_SEED = Buffer.from("deposit_vault");
 const PROPOSAL_SEED = Buffer.from("proposal");
 const VOTE_RECORD_SEED = Buffer.from("vote");
 const PROPOSAL_ACTION_SEED = Buffer.from("proposal_action");
+const EMERGENCY_AUTHORITY_SEED = Buffer.from("emergency_authority");
 
 const DISCRIMINATORS = {
   initializeGovernanceConfig: Uint8Array.from([15, 40, 42, 141, 94, 104, 27, 201]),
@@ -37,6 +38,8 @@ const DISCRIMINATORS = {
   authorizeTreasurySpend: Uint8Array.from([248, 111, 88, 252, 136, 223, 53, 172]),
   listWallet: Uint8Array.from([176, 149, 148, 11, 126, 182, 162, 248]),
   delistWallet: Uint8Array.from([40, 136, 186, 228, 254, 114, 109, 134]),
+  initializeEmergencyAuthority: Uint8Array.from([93, 231, 250, 142, 49, 224, 152, 213]),
+  linkOffchainProposal: Uint8Array.from([175, 29, 244, 214, 83, 241, 103, 128]),
 } as const;
 
 function proposalIdSeed(id: bigint): Uint8Array {
@@ -66,6 +69,14 @@ export function voteRecordPda(proposal: PublicKey, voter: PublicKey): [PublicKey
 /** `[PROPOSAL_ACTION_SEED, proposal]` — one action per proposal and one
  *  proposal per action. That binding is what stops a passed vote to ban
  *  wallet A being redeemed against wallet B. */
+/** `[EMERGENCY_AUTHORITY_SEED]` — the singleton holding AllenHark's
+ *  first-year exception and the timestamp it expires at (OFS-4100 §5.1).
+ *  Read-only to everything except the two instructions that create it,
+ *  which is what makes the deadline non-extendable. */
+export function emergencyAuthorityPda(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([EMERGENCY_AUTHORITY_SEED], GOVERNANCE_PROGRAM_ID);
+}
+
 export function proposalActionPda(proposal: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [PROPOSAL_ACTION_SEED, proposal.toBytes()],
@@ -146,6 +157,10 @@ export function initializeGovernanceConfigIx(
       meta(mint, false, false),
       meta(governanceConfig, false, true),
       meta(depositVault, false, true),
+      // Created here too, so a fresh deployment's sunset clock starts at
+      // governance genesis. It takes no parameters, which is why this
+      // signature is unchanged.
+      meta(emergencyAuthorityPda()[0], false, true),
       meta(TOKEN_2022_PROGRAM_ID, false, false),
       meta(SystemProgram.programId, false, false),
       meta(RENT_SYSVAR_ID, false, false),
@@ -203,6 +218,9 @@ export function updateGovernanceConfigIx(
       meta(governanceConfig, false, true),
       meta(mint, false, false),
       meta(forfeitDestination, false, false),
+      // Read-only. Past its `expiresAt`, the program refuses any change
+      // to `voteLockSecs` — every other field stays writable.
+      meta(emergencyAuthorityPda()[0], false, false),
     ],
     data: instructionData(
       DISCRIMINATORS.updateGovernanceConfig,
@@ -455,5 +473,67 @@ export function delistWalletIx(
       meta(banRecord, false, true),
     ],
     data: instructionData(DISCRIMINATORS.delistWallet, wallet.toBytes()),
+  });
+}
+
+/**
+ * Starts AllenHark's first-year governance exception on a deployment
+ * whose `GovernanceConfig` predates it (OFS-4100 §5.1, OFS-4200 §6.2).
+ *
+ * Permissionless and parameterless, and both on purpose. With no
+ * arguments there is nothing a caller can pass that lengthens the window
+ * — the holders are compiled into the program and the deadline is
+ * `now + one year` — so the only thing this influences is *when* the
+ * clock starts, which can only bring the deadline nearer. Permissionless
+ * means no key can withhold the start in order to keep the expiry
+ * perpetually ahead of itself.
+ *
+ * Callable exactly once per deployment: it `init`s the account, so a
+ * second call fails. A fresh deployment does not need it at all, since
+ * `initializeGovernanceConfigIx` creates the same account.
+ *
+ * `payer` funds rent and gains nothing.
+ */
+export function initializeEmergencyAuthorityIx(payer: PublicKey): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: GOVERNANCE_PROGRAM_ID,
+    keys: [
+      meta(payer, true, true),
+      meta(emergencyAuthorityPda()[0], false, true),
+      meta(SystemProgram.programId, false, false),
+    ],
+    data: instructionData(DISCRIMINATORS.initializeEmergencyAuthority),
+  });
+}
+
+/**
+ * Declares which off-chain proposal this on-chain one is the chain-side
+ * half of (OFS-4200 §6.1).
+ *
+ * `offchainIdHash` is the **SHA-256 of the off-chain proposal id's UTF-8
+ * bytes** — nothing else will match. The off-chain proposal must already
+ * name this proposal's `id` in its own signed `ProposalCreate` event:
+ * the link is two reciprocal claims, and a node holding only one reports
+ * it as unreciprocated rather than joining the records. Publishing one
+ * side without the other achieves nothing.
+ *
+ * Proposer-only, `Voting`-only, and write-once. An all-zero digest is
+ * refused, because that value is the program's "nothing claimed"
+ * sentinel and storing it would spend the single write while leaving the
+ * proposal looking unlinked forever.
+ */
+export function linkOffchainProposalIx(
+  proposer: PublicKey,
+  proposalId: bigint,
+  offchainIdHash: Uint8Array,
+): TransactionInstruction {
+  if (offchainIdHash.length !== 32) {
+    throw new Error("offchainIdHash must be a 32-byte SHA-256 digest");
+  }
+  const [proposal] = proposalPda(proposalId);
+  return new TransactionInstruction({
+    programId: GOVERNANCE_PROGRAM_ID,
+    keys: [meta(proposer, true, false), meta(proposal, false, true)],
+    data: instructionData(DISCRIMINATORS.linkOffchainProposal, offchainIdHash),
   });
 }
