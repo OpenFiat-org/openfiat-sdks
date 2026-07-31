@@ -1,6 +1,41 @@
-import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
+/**
+ * `openfiat-escrow` instruction builders (OFS-4200 §4).
+ *
+ * # Why every fund-moving builder asks for a `tokenProgram`
+ *
+ * The program takes `Interface<TokenInterface>`, so a settlement mint may
+ * be Token-2022 *or* legacy SPL — and after the allowlist landed, wSOL and
+ * real USDC are both legacy. A hardcoded program id therefore produces a
+ * transaction the runtime rejects before the program is ever entered, and
+ * it does so for the two mints most trades will use.
+ *
+ * The caller passes it rather than the SDK deriving it, because deriving it
+ * means reading the mint account's `owner` over RPC. A builder that quietly
+ * performs network I/O is worse than one that asks: it turns a pure
+ * function into a fallible, slow, and untestable one, and hides a round
+ * trip inside something that looks like arithmetic. The value comes from
+ * `(await connection.getAccountInfo(mint)).owner` at the call site.
+ *
+ * Staking and governance keep the constant, and that is correct rather than
+ * an oversight: both deal only in OPEN, which is Token-2022.
+ */
 
-import { enumTag, fixedBytes, i64LE, instructionData, meta, u16LE, u32LE, u64LE } from "./codec.js";
+import {
+  PublicKey,
+  SystemProgram,
+  TransactionInstruction,
+} from "@solana/web3.js";
+
+import {
+  enumTag,
+  fixedBytes,
+  i64LE,
+  instructionData,
+  meta,
+  u16LE,
+  u32LE,
+  u64LE,
+} from "./codec.js";
 import {
   banRecordPda,
   ESCROW_PROGRAM_ID,
@@ -42,24 +77,34 @@ const DISCRIMINATORS = {
   openDisputeCase: Uint8Array.from([28, 229, 240, 113, 124, 180, 117, 138]),
   commitDisputeVote: Uint8Array.from([210, 14, 34, 127, 75, 185, 189, 168]),
   revealDisputeVote: Uint8Array.from([211, 91, 1, 75, 154, 51, 233, 106]),
-  executeDisputeOutcome: Uint8Array.from([158, 56, 238, 187, 219, 223, 212, 99]),
+  executeDisputeOutcome: Uint8Array.from([
+    158, 56, 238, 187, 219, 223, 212, 99,
+  ]),
   initializeArbitrationPool: Uint8Array.from([77, 223, 22, 51, 66, 236, 5, 90]),
   chargeAdListingFee: Uint8Array.from([200, 39, 46, 240, 232, 173, 134, 196]),
-  claimArbitrationReward: Uint8Array.from([20, 88, 236, 69, 233, 200, 195, 238]),
+  claimArbitrationReward: Uint8Array.from([
+    20, 88, 236, 69, 233, 200, 195, 238,
+  ]),
 } as const;
 
 function reservationIdSeed(reservationId: bigint): Uint8Array {
   return u64LE(reservationId);
 }
 
-export function liquidityVaultPda(merchant: PublicKey, mint: PublicKey): [PublicKey, number] {
+export function liquidityVaultPda(
+  merchant: PublicKey,
+  mint: PublicKey,
+): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [LIQUIDITY_VAULT_SEED, merchant.toBytes(), mint.toBytes()],
     ESCROW_PROGRAM_ID,
   );
 }
 
-export function liquidityVaultTokensPda(merchant: PublicKey, mint: PublicKey): [PublicKey, number] {
+export function liquidityVaultTokensPda(
+  merchant: PublicKey,
+  mint: PublicKey,
+): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [LIQUIDITY_VAULT_TOKENS_SEED, merchant.toBytes(), mint.toBytes()],
     ESCROW_PROGRAM_ID,
@@ -73,7 +118,9 @@ export function tradeEscrowPda(reservationId: bigint): [PublicKey, number] {
   );
 }
 
-export function tradeEscrowTokensPda(reservationId: bigint): [PublicKey, number] {
+export function tradeEscrowTokensPda(
+  reservationId: bigint,
+): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [TRADE_ESCROW_TOKENS_SEED, reservationIdSeed(reservationId)],
     ESCROW_PROGRAM_ID,
@@ -97,7 +144,10 @@ export function disputeCasePda(reservationId: bigint): [PublicKey, number] {
  * authority is the `FeeConfig` PDA — only the program moves what it holds.
  */
 export function arbitrationPoolPda(): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([ARBITRATION_POOL_SEED], ESCROW_PROGRAM_ID);
+  return PublicKey.findProgramAddressSync(
+    [ARBITRATION_POOL_SEED],
+    ESCROW_PROGRAM_ID,
+  );
 }
 
 /** Mirrors `escrow::instructions::initialize_fee_config::InitializeFeeConfigParams`'s field order exactly. */
@@ -116,7 +166,10 @@ export interface InitializeFeeConfigParams {
   timeoutSecs: bigint;
 }
 
-export function initializeFeeConfigIx(admin: PublicKey, params: InitializeFeeConfigParams): TransactionInstruction {
+export function initializeFeeConfigIx(
+  admin: PublicKey,
+  params: InitializeFeeConfigParams,
+): TransactionInstruction {
   const [feeConfig] = feeConfigPda();
   return new TransactionInstruction({
     programId: ESCROW_PROGRAM_ID,
@@ -242,7 +295,11 @@ export function updateFeeConfigIx(
  * parameter; both must nonetheless be in the account list, and
  * `initialize_arbitration_pool` must have run on the cluster first.
  */
-export function createLiquidityVaultIx(merchant: PublicKey, mint: PublicKey): TransactionInstruction {
+export function createLiquidityVaultIx(
+  merchant: PublicKey,
+  mint: PublicKey,
+  tokenProgram: PublicKey,
+): TransactionInstruction {
   const [feeConfig] = feeConfigPda();
   const [arbitrationPool] = arbitrationPoolPda();
   const [liquidityVault] = liquidityVaultPda(merchant, mint);
@@ -256,7 +313,7 @@ export function createLiquidityVaultIx(merchant: PublicKey, mint: PublicKey): Tr
       meta(arbitrationPool, false, false),
       meta(liquidityVault, false, true),
       meta(tokenVault, false, true),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
       meta(SystemProgram.programId, false, false),
       meta(RENT_SYSVAR_ID, false, false),
     ],
@@ -267,6 +324,7 @@ export function createLiquidityVaultIx(merchant: PublicKey, mint: PublicKey): Tr
 export function depositLiquidityIx(
   merchant: PublicKey,
   mint: PublicKey,
+  tokenProgram: PublicKey,
   from: PublicKey,
   amount: bigint,
 ): TransactionInstruction {
@@ -281,7 +339,7 @@ export function depositLiquidityIx(
       meta(tokenVault, false, true),
       meta(from, false, true),
       meta(mint, false, false),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
     ],
     data: instructionData(DISCRIMINATORS.depositLiquidity, u64LE(amount)),
   });
@@ -294,7 +352,11 @@ export function depositLiquidityIx(
  * where new exposure to a mint starts, so a de-listed mint is refused here
  * while everything already deposited stays withdrawable.
  */
-export function reserveLiquidityIx(merchant: PublicKey, mint: PublicKey, amount: bigint): TransactionInstruction {
+export function reserveLiquidityIx(
+  merchant: PublicKey,
+  mint: PublicKey,
+  amount: bigint,
+): TransactionInstruction {
   const [liquidityVault] = liquidityVaultPda(merchant, mint);
   const [feeConfig] = feeConfigPda();
   return new TransactionInstruction({
@@ -311,6 +373,7 @@ export function reserveLiquidityIx(merchant: PublicKey, mint: PublicKey, amount:
 export function withdrawLiquidityIx(
   merchant: PublicKey,
   mint: PublicKey,
+  tokenProgram: PublicKey,
   to: PublicKey,
   amount: bigint,
 ): TransactionInstruction {
@@ -324,7 +387,7 @@ export function withdrawLiquidityIx(
       meta(tokenVault, false, true),
       meta(to, false, true),
       meta(mint, false, false),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
     ],
     data: instructionData(DISCRIMINATORS.withdrawLiquidity, u64LE(amount)),
   });
@@ -334,6 +397,7 @@ export function createTradeEscrowIx(
   merchant: PublicKey,
   buyer: PublicKey,
   mint: PublicKey,
+  tokenProgram: PublicKey,
   reservationId: bigint,
   amount: bigint,
   timeoutSecs: bigint,
@@ -352,7 +416,7 @@ export function createTradeEscrowIx(
       meta(liquidityVault, false, true),
       meta(tradeEscrow, false, true),
       meta(tokenVault, false, true),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
       meta(SystemProgram.programId, false, false),
       meta(RENT_SYSVAR_ID, false, false),
     ],
@@ -365,7 +429,12 @@ export function createTradeEscrowIx(
   });
 }
 
-export function fundTradeEscrowIx(merchant: PublicKey, mint: PublicKey, reservationId: bigint): TransactionInstruction {
+export function fundTradeEscrowIx(
+  merchant: PublicKey,
+  mint: PublicKey,
+  tokenProgram: PublicKey,
+  reservationId: bigint,
+): TransactionInstruction {
   const [liquidityVault] = liquidityVaultPda(merchant, mint);
   const [liquidityTokenVault] = liquidityVaultTokensPda(merchant, mint);
   const [tradeEscrow] = tradeEscrowPda(reservationId);
@@ -379,13 +448,16 @@ export function fundTradeEscrowIx(merchant: PublicKey, mint: PublicKey, reservat
       meta(liquidityTokenVault, false, true),
       meta(tradeEscrow, false, true),
       meta(tradeEscrowTokenVault, false, true),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
     ],
     data: instructionData(DISCRIMINATORS.fundTradeEscrow),
   });
 }
 
-export function approveSettlementIx(merchant: PublicKey, reservationId: bigint): TransactionInstruction {
+export function approveSettlementIx(
+  merchant: PublicKey,
+  reservationId: bigint,
+): TransactionInstruction {
   const [tradeEscrow] = tradeEscrowPda(reservationId);
   return new TransactionInstruction({
     programId: ESCROW_PROGRAM_ID,
@@ -405,6 +477,7 @@ export interface ReleaseDestinations {
 
 export function releaseEscrowIx(
   mint: PublicKey,
+  tokenProgram: PublicKey,
   seller: PublicKey,
   reservationId: bigint,
   destinations: ReleaseDestinations,
@@ -426,7 +499,7 @@ export function releaseEscrowIx(
       meta(destinations.ecosystemTreasury, false, true),
       meta(destinations.infraTreasury, false, true),
       meta(destinations.emergencyReserve, false, true),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
     ],
     data: instructionData(DISCRIMINATORS.releaseEscrow),
   });
@@ -435,6 +508,7 @@ export function releaseEscrowIx(
 export function cancelReservationIx(
   signer: PublicKey,
   mint: PublicKey,
+  tokenProgram: PublicKey,
   seller: PublicKey,
   reservationId: bigint,
 ): TransactionInstruction {
@@ -451,14 +525,19 @@ export function cancelReservationIx(
       meta(tradeEscrow, false, true),
       meta(tradeEscrowTokenVault, false, true),
       meta(liquidityTokenVault, false, true),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
     ],
     data: instructionData(DISCRIMINATORS.cancelReservation),
   });
 }
 
 /** Permissionless once `trade_escrow.timeout_at` has passed — no signer required. */
-export function expireReservationIx(mint: PublicKey, seller: PublicKey, reservationId: bigint): TransactionInstruction {
+export function expireReservationIx(
+  mint: PublicKey,
+  tokenProgram: PublicKey,
+  seller: PublicKey,
+  reservationId: bigint,
+): TransactionInstruction {
   const [liquidityVault] = liquidityVaultPda(seller, mint);
   const [tradeEscrow] = tradeEscrowPda(reservationId);
   const [tradeEscrowTokenVault] = tradeEscrowTokensPda(reservationId);
@@ -471,7 +550,7 @@ export function expireReservationIx(mint: PublicKey, seller: PublicKey, reservat
       meta(tradeEscrow, false, true),
       meta(tradeEscrowTokenVault, false, true),
       meta(liquidityTokenVault, false, true),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
     ],
     data: instructionData(DISCRIMINATORS.expireReservation),
   });
@@ -497,12 +576,16 @@ export function openDisputeCaseIx(
   revealWindowSecs: bigint,
   merchant: PublicKey,
   depositMint: PublicKey,
+  tokenProgram: PublicKey,
 ): TransactionInstruction {
   const [tradeEscrow] = tradeEscrowPda(reservationId);
   const [disputeCase] = disputeCasePda(reservationId);
   const [feeConfig] = feeConfigPda();
   const [merchantOpenVault] = liquidityVaultPda(merchant, depositMint);
-  const [merchantOpenTokenVault] = liquidityVaultTokensPda(merchant, depositMint);
+  const [merchantOpenTokenVault] = liquidityVaultTokensPda(
+    merchant,
+    depositMint,
+  );
   const [arbitrationPool] = arbitrationPoolPda();
   return new TransactionInstruction({
     programId: ESCROW_PROGRAM_ID,
@@ -516,11 +599,15 @@ export function openDisputeCaseIx(
       meta(merchantOpenVault, false, true),
       meta(merchantOpenTokenVault, false, true),
       meta(arbitrationPool, false, true),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
       meta(SystemProgram.programId, false, false),
       meta(SLOT_HASHES_SYSVAR_ID, false, false),
     ],
-    data: instructionData(DISCRIMINATORS.openDisputeCase, i64LE(commitWindowSecs), i64LE(revealWindowSecs)),
+    data: instructionData(
+      DISCRIMINATORS.openDisputeCase,
+      i64LE(commitWindowSecs),
+      i64LE(revealWindowSecs),
+    ),
   });
 }
 
@@ -551,7 +638,10 @@ export function commitDisputeVoteIx(
       meta(arbitratorStake, false, false),
       meta(feeConfig, false, false),
     ],
-    data: instructionData(DISCRIMINATORS.commitDisputeVote, fixedBytes(commitment, 32)),
+    data: instructionData(
+      DISCRIMINATORS.commitDisputeVote,
+      fixedBytes(commitment, 32),
+    ),
   });
 }
 
@@ -572,7 +662,11 @@ export function revealDisputeVoteIx(
       meta(stakingConfig, false, false),
       meta(arbitratorStake, false, false),
     ],
-    data: instructionData(DISCRIMINATORS.revealDisputeVote, enumTag(outcome), fixedBytes(salt, 32)),
+    data: instructionData(
+      DISCRIMINATORS.revealDisputeVote,
+      enumTag(outcome),
+      fixedBytes(salt, 32),
+    ),
   });
 }
 
@@ -588,6 +682,7 @@ export function revealDisputeVoteIx(
  */
 export function executeDisputeOutcomeIx(
   mint: PublicKey,
+  tokenProgram: PublicKey,
   seller: PublicKey,
   reservationId: bigint,
   destinations: ReleaseDestinations,
@@ -621,7 +716,7 @@ export function executeDisputeOutcomeIx(
       meta(arbitrationPool, false, true),
       meta(merchantOpenVault, false, true),
       meta(merchantOpenTokenVault, false, true),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
       // Passed even though a round that decides never touches it: a round
       // that falls short re-draws the case seed, and Anchor's account list
       // is fixed per instruction rather than per branch.
@@ -632,7 +727,11 @@ export function executeDisputeOutcomeIx(
 }
 
 /** Creates the arbitration pool. Admin-only, once per deployment. */
-export function initializeArbitrationPoolIx(admin: PublicKey, mint: PublicKey): TransactionInstruction {
+export function initializeArbitrationPoolIx(
+  admin: PublicKey,
+  mint: PublicKey,
+  tokenProgram: PublicKey,
+): TransactionInstruction {
   const [feeConfig] = feeConfigPda();
   const [arbitrationPool] = arbitrationPoolPda();
   return new TransactionInstruction({
@@ -642,7 +741,7 @@ export function initializeArbitrationPoolIx(admin: PublicKey, mint: PublicKey): 
       meta(feeConfig, false, false),
       meta(mint, false, false),
       meta(arbitrationPool, false, true),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
       meta(SystemProgram.programId, false, false),
     ],
     data: instructionData(DISCRIMINATORS.initializeArbitrationPool),
@@ -661,6 +760,7 @@ export function initializeArbitrationPoolIx(admin: PublicKey, mint: PublicKey): 
 export function chargeAdListingFeeIx(
   merchant: PublicKey,
   mint: PublicKey,
+  tokenProgram: PublicKey,
   devTreasury: PublicKey,
   ecosystemTreasury: PublicKey,
   infraTreasury: PublicKey,
@@ -682,9 +782,12 @@ export function chargeAdListingFeeIx(
       meta(infraTreasury, false, true),
       meta(emergencyReserve, false, true),
       meta(mint, false, false),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
     ],
-    data: instructionData(DISCRIMINATORS.chargeAdListingFee, fixedBytes(advertisementId, 32)),
+    data: instructionData(
+      DISCRIMINATORS.chargeAdListingFee,
+      fixedBytes(advertisementId, 32),
+    ),
   });
 }
 
@@ -701,6 +804,7 @@ export function claimArbitrationRewardIx(
   reservationId: bigint,
   depositMint: PublicKey,
   to: PublicKey,
+  tokenProgram: PublicKey,
 ): TransactionInstruction {
   const [disputeCase] = disputeCasePda(reservationId);
   const [feeConfig] = feeConfigPda();
@@ -714,7 +818,7 @@ export function claimArbitrationRewardIx(
       meta(depositMint, false, false),
       meta(arbitrationPool, false, true),
       meta(to, false, true),
-      meta(TOKEN_2022_PROGRAM_ID, false, false),
+      meta(tokenProgram, false, false),
     ],
     data: instructionData(DISCRIMINATORS.claimArbitrationReward),
   });

@@ -7,10 +7,28 @@
 //! `LiquidityVault`/its token vault key off `(merchant, mint)`,
 //! `TradeEscrowVault`/its token vault and `DisputeCase` key off
 //! `reservation_id`, `FeeConfig` is a singleton.
+//!
+//! # Why every fund-moving builder asks for a `token_program`
+//!
+//! The program takes `Interface<TokenInterface>`, so a settlement mint may
+//! be Token-2022 *or* legacy SPL — and after the allowlist landed, wSOL and
+//! real USDC are both legacy. A hardcoded program id therefore produces a
+//! transaction the runtime rejects before the program is ever entered, and
+//! it does so for the two mints most trades will use.
+//!
+//! The caller passes it rather than the SDK deriving it, because deriving
+//! it means reading the mint account's `owner` over RPC. A builder that
+//! quietly performs network I/O is worse than one that asks: it turns a
+//! pure function into a fallible, slow, and untestable one, and hides a
+//! round trip inside something that looks like arithmetic. The value comes
+//! from `mint_account.owner` at the call site.
+//!
+//! Staking and governance keep the constant, and that is correct rather
+//! than an oversight: both deal only in OPEN, which is Token-2022.
 
 use super::{
     DisputeOutcome, ESCROW_PROGRAM_ID, RENT_SYSVAR_ID, Role, SLOT_HASHES_SYSVAR_ID,
-    TOKEN_2022_PROGRAM_ID, instruction_data, system_program_id,
+    instruction_data, system_program_id,
 };
 use crate::onchain::staking;
 use borsh::BorshSerialize;
@@ -260,7 +278,11 @@ pub fn initialize_fee_config_ix(
 /// creatable through that carve-out. Both are seeds-derived singletons, so
 /// neither is a parameter; both must nonetheless be in the account list, and
 /// `initialize_arbitration_pool` must have run on the cluster first.
-pub fn create_liquidity_vault_ix(merchant: &Pubkey, mint: &Pubkey) -> Instruction {
+pub fn create_liquidity_vault_ix(
+    merchant: &Pubkey,
+    mint: &Pubkey,
+    token_program: &Pubkey,
+) -> Instruction {
     let (fee_config, _) = fee_config_pda();
     let (arbitration_pool, _) = arbitration_pool_pda();
     let (liquidity_vault, _) = liquidity_vault_pda(merchant, mint);
@@ -276,7 +298,7 @@ pub fn create_liquidity_vault_ix(merchant: &Pubkey, mint: &Pubkey) -> Instructio
             AccountMeta::new_readonly(arbitration_pool, false),
             AccountMeta::new(liquidity_vault, false),
             AccountMeta::new(token_vault, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
             AccountMeta::new_readonly(system_program_id(), false),
             AccountMeta::new_readonly(RENT_SYSVAR_ID, false),
         ],
@@ -287,6 +309,7 @@ pub fn create_liquidity_vault_ix(merchant: &Pubkey, mint: &Pubkey) -> Instructio
 pub fn deposit_liquidity_ix(
     merchant: &Pubkey,
     mint: &Pubkey,
+    token_program: &Pubkey,
     from: &Pubkey,
     amount: u64,
 ) -> Instruction {
@@ -303,7 +326,7 @@ pub fn deposit_liquidity_ix(
             AccountMeta::new(token_vault, false),
             AccountMeta::new(*from, false),
             AccountMeta::new_readonly(*mint, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
         ],
     )
 }
@@ -333,6 +356,7 @@ pub fn reserve_liquidity_ix(merchant: &Pubkey, mint: &Pubkey, amount: u64) -> In
 pub fn withdraw_liquidity_ix(
     merchant: &Pubkey,
     mint: &Pubkey,
+    token_program: &Pubkey,
     to: &Pubkey,
     amount: u64,
 ) -> Instruction {
@@ -348,7 +372,7 @@ pub fn withdraw_liquidity_ix(
             AccountMeta::new(token_vault, false),
             AccountMeta::new(*to, false),
             AccountMeta::new_readonly(*mint, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
         ],
     )
 }
@@ -359,6 +383,7 @@ pub fn create_trade_escrow_ix(
     merchant: &Pubkey,
     buyer: &Pubkey,
     mint: &Pubkey,
+    token_program: &Pubkey,
     reservation_id: u64,
     amount: u64,
     timeout_secs: i64,
@@ -382,14 +407,19 @@ pub fn create_trade_escrow_ix(
             AccountMeta::new(liquidity_vault, false),
             AccountMeta::new(trade_escrow, false),
             AccountMeta::new(token_vault, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
             AccountMeta::new_readonly(system_program_id(), false),
             AccountMeta::new_readonly(RENT_SYSVAR_ID, false),
         ],
     )
 }
 
-pub fn fund_trade_escrow_ix(merchant: &Pubkey, mint: &Pubkey, reservation_id: u64) -> Instruction {
+pub fn fund_trade_escrow_ix(
+    merchant: &Pubkey,
+    mint: &Pubkey,
+    token_program: &Pubkey,
+    reservation_id: u64,
+) -> Instruction {
     let (liquidity_vault, _) = liquidity_vault_pda(merchant, mint);
     let (liquidity_token_vault, _) = liquidity_vault_tokens_pda(merchant, mint);
     let (trade_escrow, _) = trade_escrow_pda(reservation_id);
@@ -405,7 +435,7 @@ pub fn fund_trade_escrow_ix(merchant: &Pubkey, mint: &Pubkey, reservation_id: u6
             AccountMeta::new(liquidity_token_vault, false),
             AccountMeta::new(trade_escrow, false),
             AccountMeta::new(trade_escrow_token_vault, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
         ],
     )
 }
@@ -435,6 +465,7 @@ pub fn approve_settlement_ix(merchant: &Pubkey, reservation_id: u64) -> Instruct
 pub fn release_escrow_ix(
     seller: &Pubkey,
     mint: &Pubkey,
+    token_program: &Pubkey,
     reservation_id: u64,
     buyer_token_account: &Pubkey,
     dev_treasury: &Pubkey,
@@ -461,13 +492,17 @@ pub fn release_escrow_ix(
             AccountMeta::new(*ecosystem_treasury, false),
             AccountMeta::new(*infra_treasury, false),
             AccountMeta::new(*emergency_reserve, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
         ],
     )
 }
 
 /// Creates the arbitration pool. Admin-only, once per deployment.
-pub fn initialize_arbitration_pool_ix(admin: &Pubkey, mint: &Pubkey) -> Instruction {
+pub fn initialize_arbitration_pool_ix(
+    admin: &Pubkey,
+    mint: &Pubkey,
+    token_program: &Pubkey,
+) -> Instruction {
     let (fee_config, _) = fee_config_pda();
     let (arbitration_pool, _) = arbitration_pool_pda();
     let data = instruction_data([77, 223, 22, 51, 66, 236, 5, 90], ());
@@ -479,7 +514,7 @@ pub fn initialize_arbitration_pool_ix(admin: &Pubkey, mint: &Pubkey) -> Instruct
             AccountMeta::new_readonly(fee_config, false),
             AccountMeta::new_readonly(*mint, false),
             AccountMeta::new(arbitration_pool, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
             AccountMeta::new_readonly(system_program_id(), false),
         ],
     )
@@ -496,6 +531,7 @@ pub fn initialize_arbitration_pool_ix(admin: &Pubkey, mint: &Pubkey) -> Instruct
 pub fn charge_ad_listing_fee_ix(
     merchant: &Pubkey,
     mint: &Pubkey,
+    token_program: &Pubkey,
     dev_treasury: &Pubkey,
     ecosystem_treasury: &Pubkey,
     infra_treasury: &Pubkey,
@@ -519,7 +555,7 @@ pub fn charge_ad_listing_fee_ix(
             AccountMeta::new(*infra_treasury, false),
             AccountMeta::new(*emergency_reserve, false),
             AccountMeta::new_readonly(*mint, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
         ],
     )
 }
@@ -535,6 +571,7 @@ pub fn claim_arbitration_reward_ix(
     reservation_id: u64,
     deposit_mint: &Pubkey,
     to: &Pubkey,
+    token_program: &Pubkey,
 ) -> Instruction {
     let (dispute_case, _) = dispute_case_pda(reservation_id);
     let (fee_config, _) = fee_config_pda();
@@ -550,7 +587,7 @@ pub fn claim_arbitration_reward_ix(
             AccountMeta::new_readonly(*deposit_mint, false),
             AccountMeta::new(arbitration_pool, false),
             AccountMeta::new(*to, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
         ],
     )
 }
@@ -561,6 +598,7 @@ pub fn cancel_reservation_ix(
     signer: &Pubkey,
     seller: &Pubkey,
     mint: &Pubkey,
+    token_program: &Pubkey,
     reservation_id: u64,
 ) -> Instruction {
     let (liquidity_vault, _) = liquidity_vault_pda(seller, mint);
@@ -578,13 +616,18 @@ pub fn cancel_reservation_ix(
             AccountMeta::new(trade_escrow, false),
             AccountMeta::new(trade_escrow_token_vault, false),
             AccountMeta::new(liquidity_token_vault, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
         ],
     )
 }
 
 /// Permissionless once `trade_escrow.timeout_at` has passed (OFS-2300 §8a).
-pub fn expire_reservation_ix(seller: &Pubkey, mint: &Pubkey, reservation_id: u64) -> Instruction {
+pub fn expire_reservation_ix(
+    seller: &Pubkey,
+    mint: &Pubkey,
+    token_program: &Pubkey,
+    reservation_id: u64,
+) -> Instruction {
     let (liquidity_vault, _) = liquidity_vault_pda(seller, mint);
     let (trade_escrow, _) = trade_escrow_pda(reservation_id);
     let (trade_escrow_token_vault, _) = trade_escrow_tokens_pda(reservation_id);
@@ -599,7 +642,7 @@ pub fn expire_reservation_ix(seller: &Pubkey, mint: &Pubkey, reservation_id: u64
             AccountMeta::new(trade_escrow, false),
             AccountMeta::new(trade_escrow_token_vault, false),
             AccountMeta::new(liquidity_token_vault, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
         ],
     )
 }
@@ -626,6 +669,7 @@ pub fn open_dispute_case_ix(
     reveal_window_secs: i64,
     merchant: &Pubkey,
     deposit_mint: &Pubkey,
+    token_program: &Pubkey,
 ) -> Instruction {
     let (trade_escrow, _) = trade_escrow_pda(reservation_id);
     let (dispute_case, _) = dispute_case_pda(reservation_id);
@@ -650,7 +694,7 @@ pub fn open_dispute_case_ix(
             AccountMeta::new(merchant_open_vault, false),
             AccountMeta::new(merchant_open_token_vault, false),
             AccountMeta::new(arbitration_pool, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
             AccountMeta::new_readonly(system_program_id(), false),
             AccountMeta::new_readonly(SLOT_HASHES_SYSVAR_ID, false),
         ],
@@ -720,6 +764,7 @@ pub fn reveal_dispute_vote_ix(
 pub fn execute_dispute_outcome_ix(
     seller: &Pubkey,
     mint: &Pubkey,
+    token_program: &Pubkey,
     reservation_id: u64,
     buyer_token_account: &Pubkey,
     dev_treasury: &Pubkey,
@@ -758,7 +803,7 @@ pub fn execute_dispute_outcome_ix(
             AccountMeta::new(arbitration_pool, false),
             AccountMeta::new(merchant_open_vault, false),
             AccountMeta::new(merchant_open_token_vault, false),
-            AccountMeta::new_readonly(TOKEN_2022_PROGRAM_ID, false),
+            AccountMeta::new_readonly(*token_program, false),
             // Passed even though a round that decides never touches it: a
             // round that falls short re-draws the case seed, and Anchor's
             // account list is fixed per instruction rather than per branch.
@@ -770,6 +815,7 @@ pub fn execute_dispute_outcome_ix(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::onchain::LEGACY_TOKEN_PROGRAM_ID;
 
     #[test]
     fn update_fee_config_ix_carries_treasuries_as_accounts_not_data() {
@@ -882,6 +928,11 @@ mod tests {
         let merchant = Pubkey::new_unique();
         let buyer = Pubkey::new_unique();
         let mint = Pubkey::new_unique();
+        // Deliberately the LEGACY program, not Token-2022. These assertions
+        // are the only thing standing between a builder that threads this
+        // parameter through and one that ignores it and emits the constant,
+        // and the two are indistinguishable if the test passes the constant.
+        let token_program = LEGACY_TOKEN_PROGRAM_ID;
         let (fee_config, _) = fee_config_pda();
         let (arbitration_pool, _) = arbitration_pool_pda();
         let (liquidity_vault, _) = liquidity_vault_pda(&merchant, &mint);
@@ -897,7 +948,7 @@ mod tests {
         // mint — dropping it makes a merchant's OPEN vault uncreatable and
         // silently zeroes every arbitration deposit.
         assert_eq!(
-            keys(&create_liquidity_vault_ix(&merchant, &mint)),
+            keys(&create_liquidity_vault_ix(&merchant, &mint, &token_program)),
             vec![
                 merchant,
                 mint,
@@ -905,7 +956,7 @@ mod tests {
                 arbitration_pool,
                 liquidity_vault,
                 liquidity_tokens,
-                TOKEN_2022_PROGRAM_ID,
+                token_program,
                 system_program_id(),
                 RENT_SYSVAR_ID,
             ]
@@ -918,7 +969,13 @@ mod tests {
 
         assert_eq!(
             keys(&create_trade_escrow_ix(
-                &merchant, &buyer, &mint, 1, 100, 1800
+                &merchant,
+                &buyer,
+                &mint,
+                &token_program,
+                1,
+                100,
+                1800
             )),
             vec![
                 merchant,
@@ -928,7 +985,7 @@ mod tests {
                 liquidity_vault,
                 trade_escrow,
                 trade_tokens,
-                TOKEN_2022_PROGRAM_ID,
+                token_program,
                 system_program_id(),
                 RENT_SYSVAR_ID,
             ]
@@ -939,6 +996,11 @@ mod tests {
     fn every_instruction_carries_its_real_idl_discriminator() {
         let merchant = Pubkey::new_unique();
         let mint = Pubkey::new_unique();
+        // Deliberately the LEGACY program, not Token-2022. These assertions
+        // are the only thing standing between a builder that threads this
+        // parameter through and one that ignores it and emits the constant,
+        // and the two are indistinguishable if the test passes the constant.
+        let token_program = LEGACY_TOKEN_PROGRAM_ID;
         let cases: Vec<(Instruction, [u8; 8])> = vec![
             (
                 initialize_fee_config_ix(
@@ -959,11 +1021,11 @@ mod tests {
                 [62, 162, 20, 133, 121, 65, 145, 27],
             ),
             (
-                create_liquidity_vault_ix(&merchant, &mint),
+                create_liquidity_vault_ix(&merchant, &mint, &token_program),
                 [204, 255, 106, 205, 72, 186, 252, 83],
             ),
             (
-                deposit_liquidity_ix(&merchant, &mint, &Pubkey::new_unique(), 100),
+                deposit_liquidity_ix(&merchant, &mint, &token_program, &Pubkey::new_unique(), 100),
                 [245, 99, 59, 25, 151, 71, 233, 249],
             ),
             (
@@ -971,15 +1033,23 @@ mod tests {
                 [197, 37, 232, 60, 182, 38, 12, 84],
             ),
             (
-                withdraw_liquidity_ix(&merchant, &mint, &Pubkey::new_unique(), 100),
+                withdraw_liquidity_ix(&merchant, &mint, &token_program, &Pubkey::new_unique(), 100),
                 [149, 158, 33, 185, 47, 243, 253, 31],
             ),
             (
-                create_trade_escrow_ix(&merchant, &Pubkey::new_unique(), &mint, 1, 100, 1800),
+                create_trade_escrow_ix(
+                    &merchant,
+                    &Pubkey::new_unique(),
+                    &mint,
+                    &token_program,
+                    1,
+                    100,
+                    1800,
+                ),
                 [149, 181, 111, 61, 122, 174, 71, 51],
             ),
             (
-                fund_trade_escrow_ix(&merchant, &mint, 1),
+                fund_trade_escrow_ix(&merchant, &mint, &token_program, 1),
                 [148, 177, 67, 164, 227, 76, 173, 101],
             ),
             (
@@ -990,6 +1060,7 @@ mod tests {
                 release_escrow_ix(
                     &merchant,
                     &mint,
+                    &token_program,
                     1,
                     &Pubkey::new_unique(),
                     &Pubkey::new_unique(),
@@ -1000,11 +1071,11 @@ mod tests {
                 [146, 253, 129, 233, 20, 145, 181, 206],
             ),
             (
-                cancel_reservation_ix(&merchant, &merchant, &mint, 1),
+                cancel_reservation_ix(&merchant, &merchant, &mint, &token_program, 1),
                 [72, 162, 75, 180, 116, 157, 146, 172],
             ),
             (
-                expire_reservation_ix(&merchant, &mint, 1),
+                expire_reservation_ix(&merchant, &mint, &token_program, 1),
                 [19, 147, 203, 128, 237, 194, 72, 183],
             ),
             (
@@ -1016,6 +1087,7 @@ mod tests {
                     3600,
                     &merchant,
                     &Pubkey::new_unique(),
+                    &token_program,
                 ),
                 [28, 229, 240, 113, 124, 180, 117, 138],
             ),
@@ -1031,6 +1103,7 @@ mod tests {
                 execute_dispute_outcome_ix(
                     &merchant,
                     &mint,
+                    &token_program,
                     1,
                     &Pubkey::new_unique(),
                     &Pubkey::new_unique(),
@@ -1053,6 +1126,7 @@ mod tests {
         let ix = release_escrow_ix(
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
+            &LEGACY_TOKEN_PROGRAM_ID,
             1,
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
@@ -1109,12 +1183,14 @@ mod tests {
             60,
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
+            &LEGACY_TOKEN_PROGRAM_ID,
         );
         assert_eq!(open.accounts.last().unwrap().pubkey, SLOT_HASHES_SYSVAR_ID);
 
         let execute = execute_dispute_outcome_ix(
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
+            &LEGACY_TOKEN_PROGRAM_ID,
             1,
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),

@@ -33,7 +33,7 @@ use openfiat_sdk::onchain::escrow::{
 use openfiat_sdk::onchain::staking::{
     initialize_stake_account_ix, initialize_staking_config_ix, stake_ix,
 };
-use openfiat_sdk::onchain::{DisputeOutcome, Role};
+use openfiat_sdk::onchain::{DisputeOutcome, Role, TOKEN_2022_PROGRAM_ID};
 use openfiat_sdk::{Client, ClientConfig};
 use openfiat_settlement::SettlementId;
 use openfiat_settlement::events::SettlementInitiate;
@@ -199,6 +199,7 @@ async fn a_disputed_trade_reaches_a_stake_weighted_onchain_outcome_and_the_offch
         &[create_liquidity_vault_ix(
             &merchant.pubkey(),
             &mint.pubkey(),
+            &TOKEN_2022_PROGRAM_ID,
         )],
         &[],
     )
@@ -209,6 +210,7 @@ async fn a_disputed_trade_reaches_a_stake_weighted_onchain_outcome_and_the_offch
         &[deposit_liquidity_ix(
             &merchant.pubkey(),
             &mint.pubkey(),
+            &TOKEN_2022_PROGRAM_ID,
             &merchant_from.pubkey(),
             100_000 * DECIMALS,
         )],
@@ -233,6 +235,7 @@ async fn a_disputed_trade_reaches_a_stake_weighted_onchain_outcome_and_the_offch
             &merchant.pubkey(),
             &buyer_onchain.pubkey(),
             &mint.pubkey(),
+            &TOKEN_2022_PROGRAM_ID,
             RESERVATION_ID,
             50_000 * DECIMALS,
             3600,
@@ -246,6 +249,7 @@ async fn a_disputed_trade_reaches_a_stake_weighted_onchain_outcome_and_the_offch
         &[fund_trade_escrow_ix(
             &merchant.pubkey(),
             &mint.pubkey(),
+            &TOKEN_2022_PROGRAM_ID,
             RESERVATION_ID,
         )],
         &[],
@@ -306,6 +310,7 @@ async fn a_disputed_trade_reaches_a_stake_weighted_onchain_outcome_and_the_offch
             REVEAL_WINDOW_SECS,
             &merchant.pubkey(),
             &deposit_mint.pubkey(),
+            &TOKEN_2022_PROGRAM_ID,
         )],
         &[],
     )
@@ -464,6 +469,7 @@ async fn a_disputed_trade_reaches_a_stake_weighted_onchain_outcome_and_the_offch
     let execute_ix = execute_dispute_outcome_ix(
         &merchant.pubkey(),
         &mint.pubkey(),
+        &TOKEN_2022_PROGRAM_ID,
         RESERVATION_ID,
         &buyer_token_account.pubkey(),
         &dev_treasury.pubkey(),

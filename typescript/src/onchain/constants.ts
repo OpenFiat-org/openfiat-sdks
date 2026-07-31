@@ -10,8 +10,32 @@ export const ESCROW_PROGRAM_ID = new PublicKey("HaPpM1QYM3dKp3sX7zhEdft9hB6ncu6x
 export const STAKING_PROGRAM_ID = new PublicKey("HYEXk8XQukBkZbiYB33JyVefQDxqyCpPudad3wBCyYmx");
 export const GOVERNANCE_PROGRAM_ID = new PublicKey("AVJfKUjHsizkGGUy8sdz4Xma2hVgmgvgg8GmUMs8E4eE");
 
-/** Every account these programs custody is a Token-2022 mint (OFS-4200 §1). */
+/**
+ * The SPL Token-2022 program.
+ *
+ * Still the right answer for staking and governance, which deal only in
+ * OPEN, and OPEN is a Token-2022 mint. It is **not** automatically the
+ * right answer for escrow: since the programs moved to
+ * `Interface<TokenInterface>`, a settlement mint may be legacy SPL — wSOL
+ * and real USDC both are — so the escrow builders take the program as a
+ * parameter. See {@link LEGACY_TOKEN_PROGRAM_ID}.
+ */
 export const TOKEN_2022_PROGRAM_ID = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+/**
+ * The original SPL Token program.
+ *
+ * Most mints in circulation are still this one, including wSOL and the real
+ * USDC and USDT. An escrow transaction naming Token-2022 for one of them is
+ * rejected by the runtime before the program ever sees it.
+ *
+ * Neither constant is a default anywhere. Derive the right one from the
+ * mint account's own `owner` and pass it: the SDK cannot know it without an
+ * RPC round trip, and a builder that quietly performs network I/O is worse
+ * than one that asks.
+ */
+export const LEGACY_TOKEN_PROGRAM_ID = new PublicKey(
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+);
 export const RENT_SYSVAR_ID = new PublicKey("SysvarRent111111111111111111111111111111111");
 /**
  * The SlotHashes sysvar — read by the dispute instructions that latch a

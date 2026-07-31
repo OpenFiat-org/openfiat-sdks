@@ -53,6 +53,7 @@ use openfiat_crypto::{Keypair as OpenfiatKeypair, MintAddress};
 use openfiat_network::identity::peer_id_from_public_key;
 use openfiat_reservations::ReservationId;
 use openfiat_reservations::events::ReservationRequest;
+use openfiat_sdk::onchain::TOKEN_2022_PROGRAM_ID;
 use openfiat_sdk::onchain::escrow;
 use openfiat_sdk::{Client, ClientConfig};
 use openfiat_settlement::SettlementId;
@@ -160,13 +161,18 @@ async fn a_trade_completes_end_to_end_with_a_real_on_chain_escrow_release() {
     );
     support::submit(&rpc_client, &admin, &[init_fee_config], &[]).await;
 
-    let create_vault = escrow::create_liquidity_vault_ix(&merchant_sol.pubkey(), &mint.pubkey());
+    let create_vault = escrow::create_liquidity_vault_ix(
+        &merchant_sol.pubkey(),
+        &mint.pubkey(),
+        &TOKEN_2022_PROGRAM_ID,
+    );
     support::submit(&rpc_client, &merchant_sol, &[create_vault], &[]).await;
 
     let deposit_amount = 500 * DECIMALS;
     let deposit = escrow::deposit_liquidity_ix(
         &merchant_sol.pubkey(),
         &mint.pubkey(),
+        &TOKEN_2022_PROGRAM_ID,
         &merchant_from.pubkey(),
         deposit_amount,
     );
@@ -250,14 +256,19 @@ async fn a_trade_completes_end_to_end_with_a_real_on_chain_escrow_release() {
         &merchant_sol.pubkey(),
         &buyer_token_account.pubkey(), // stand-in buyer Solana identity — this program only records it verbatim, never checks a signature against it
         &mint.pubkey(),
+        &TOKEN_2022_PROGRAM_ID,
         reservation_id_u64,
         reservation_amount_open * DECIMALS,
         1_800,
     );
     support::submit(&rpc_client, &merchant_sol, &[create_trade_escrow], &[]).await;
 
-    let fund_trade_escrow =
-        escrow::fund_trade_escrow_ix(&merchant_sol.pubkey(), &mint.pubkey(), reservation_id_u64);
+    let fund_trade_escrow = escrow::fund_trade_escrow_ix(
+        &merchant_sol.pubkey(),
+        &mint.pubkey(),
+        &TOKEN_2022_PROGRAM_ID,
+        reservation_id_u64,
+    );
     support::submit(&rpc_client, &merchant_sol, &[fund_trade_escrow], &[]).await;
 
     // --- Off-chain: settlement initiate + pay ---
@@ -309,6 +320,7 @@ async fn a_trade_completes_end_to_end_with_a_real_on_chain_escrow_release() {
     let release_ix = escrow::release_escrow_ix(
         &merchant_sol.pubkey(),
         &mint.pubkey(),
+        &TOKEN_2022_PROGRAM_ID,
         reservation_id_u64,
         &buyer_token_account.pubkey(),
         &dev_treasury.pubkey(),

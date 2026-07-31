@@ -36,10 +36,14 @@ import {
   RENT_SYSVAR_ID,
   Role,
   SLOT_HASHES_SYSVAR_ID,
-  TOKEN_2022_PROGRAM_ID,
+  LEGACY_TOKEN_PROGRAM_ID,
 } from "../src/onchain/constants.js";
 import { stakeAccountPda, stakingConfigPda } from "../src/onchain/staking.js";
-import { expectAccounts, expectDiscriminator, fakePubkey } from "./onchain-helpers.js";
+import {
+  expectAccounts,
+  expectDiscriminator,
+  fakePubkey,
+} from "./onchain-helpers.js";
 
 const merchant = fakePubkey(1);
 const mint = fakePubkey(2);
@@ -90,7 +94,7 @@ describe("escrow PDAs", () => {
 
 describe("escrow instructions", () => {
   it("createLiquidityVaultIx", () => {
-    const ix = createLiquidityVaultIx(merchant, mint);
+    const ix = createLiquidityVaultIx(merchant, mint, LEGACY_TOKEN_PROGRAM_ID);
     expect(ix.programId.equals(ESCROW_PROGRAM_ID)).toBe(true);
     expectDiscriminator(ix, [204, 255, 106, 205, 72, 186, 252, 83]);
     const [liquidityVault] = liquidityVaultPda(merchant, mint);
@@ -110,7 +114,7 @@ describe("escrow instructions", () => {
       { pubkey: arbitrationPool, isSigner: false, isWritable: false },
       { pubkey: liquidityVault, isSigner: false, isWritable: true },
       { pubkey: tokenVault, isSigner: false, isWritable: true },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: RENT_SYSVAR_ID, isSigner: false, isWritable: false },
     ]);
@@ -118,7 +122,13 @@ describe("escrow instructions", () => {
 
   it("depositLiquidityIx", () => {
     const from = fakePubkey(4);
-    const ix = depositLiquidityIx(merchant, mint, from, 1_000n);
+    const ix = depositLiquidityIx(
+      merchant,
+      mint,
+      LEGACY_TOKEN_PROGRAM_ID,
+      from,
+      1_000n,
+    );
     expectDiscriminator(ix, [245, 99, 59, 25, 151, 71, 233, 249]);
     const [liquidityVault] = liquidityVaultPda(merchant, mint);
     const [tokenVault] = liquidityVaultTokensPda(merchant, mint);
@@ -131,7 +141,7 @@ describe("escrow instructions", () => {
       { pubkey: tokenVault, isSigner: false, isWritable: true },
       { pubkey: from, isSigner: false, isWritable: true },
       { pubkey: mint, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);
     expect(ix.data.readBigUInt64LE(8)).toBe(1_000n);
   });
@@ -152,7 +162,13 @@ describe("escrow instructions", () => {
 
   it("withdrawLiquidityIx", () => {
     const to = fakePubkey(5);
-    const ix = withdrawLiquidityIx(merchant, mint, to, 250n);
+    const ix = withdrawLiquidityIx(
+      merchant,
+      mint,
+      LEGACY_TOKEN_PROGRAM_ID,
+      to,
+      250n,
+    );
     expectDiscriminator(ix, [149, 158, 33, 185, 47, 243, 253, 31]);
     const [liquidityVault] = liquidityVaultPda(merchant, mint);
     const [tokenVault] = liquidityVaultTokensPda(merchant, mint);
@@ -162,12 +178,20 @@ describe("escrow instructions", () => {
       { pubkey: tokenVault, isSigner: false, isWritable: true },
       { pubkey: to, isSigner: false, isWritable: true },
       { pubkey: mint, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);
   });
 
   it("createTradeEscrowIx", () => {
-    const ix = createTradeEscrowIx(merchant, buyer, mint, reservationId, 10_000n, 1_800n);
+    const ix = createTradeEscrowIx(
+      merchant,
+      buyer,
+      mint,
+      LEGACY_TOKEN_PROGRAM_ID,
+      reservationId,
+      10_000n,
+      1_800n,
+    );
     expectDiscriminator(ix, [149, 181, 111, 61, 122, 174, 71, 51]);
     const [liquidityVault] = liquidityVaultPda(merchant, mint);
     const [tradeEscrow] = tradeEscrowPda(reservationId);
@@ -183,7 +207,7 @@ describe("escrow instructions", () => {
       { pubkey: liquidityVault, isSigner: false, isWritable: true },
       { pubkey: tradeEscrow, isSigner: false, isWritable: true },
       { pubkey: tokenVault, isSigner: false, isWritable: true },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: RENT_SYSVAR_ID, isSigner: false, isWritable: false },
     ]);
@@ -193,7 +217,12 @@ describe("escrow instructions", () => {
   });
 
   it("fundTradeEscrowIx", () => {
-    const ix = fundTradeEscrowIx(merchant, mint, reservationId);
+    const ix = fundTradeEscrowIx(
+      merchant,
+      mint,
+      LEGACY_TOKEN_PROGRAM_ID,
+      reservationId,
+    );
     expectDiscriminator(ix, [148, 177, 67, 164, 227, 76, 173, 101]);
     const [liquidityVault] = liquidityVaultPda(merchant, mint);
     const [liquidityTokenVault] = liquidityVaultTokensPda(merchant, mint);
@@ -206,7 +235,7 @@ describe("escrow instructions", () => {
       { pubkey: liquidityTokenVault, isSigner: false, isWritable: true },
       { pubkey: tradeEscrow, isSigner: false, isWritable: true },
       { pubkey: tradeEscrowTokenVault, isSigner: false, isWritable: true },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);
   });
 
@@ -229,7 +258,13 @@ describe("escrow instructions", () => {
   };
 
   it("releaseEscrowIx (permissionless — no signer)", () => {
-    const ix = releaseEscrowIx(mint, merchant, reservationId, destinations);
+    const ix = releaseEscrowIx(
+      mint,
+      LEGACY_TOKEN_PROGRAM_ID,
+      merchant,
+      reservationId,
+      destinations,
+    );
     expectDiscriminator(ix, [146, 253, 129, 233, 20, 145, 181, 206]);
     const [liquidityVault] = liquidityVaultPda(merchant, mint);
     const [tradeEscrow] = tradeEscrowPda(reservationId);
@@ -240,27 +275,43 @@ describe("escrow instructions", () => {
       { pubkey: liquidityVault, isSigner: false, isWritable: true },
       { pubkey: tradeEscrow, isSigner: false, isWritable: true },
       { pubkey: tradeEscrowTokenVault, isSigner: false, isWritable: true },
-      { pubkey: destinations.buyerTokenAccount, isSigner: false, isWritable: true },
+      {
+        pubkey: destinations.buyerTokenAccount,
+        isSigner: false,
+        isWritable: true,
+      },
       { pubkey: feeConfig, isSigner: false, isWritable: false },
       { pubkey: destinations.devTreasury, isSigner: false, isWritable: true },
-      { pubkey: destinations.ecosystemTreasury, isSigner: false, isWritable: true },
+      {
+        pubkey: destinations.ecosystemTreasury,
+        isSigner: false,
+        isWritable: true,
+      },
       { pubkey: destinations.infraTreasury, isSigner: false, isWritable: true },
-      { pubkey: destinations.emergencyReserve, isSigner: false, isWritable: true },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      {
+        pubkey: destinations.emergencyReserve,
+        isSigner: false,
+        isWritable: true,
+      },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);
   });
 
   it("initializeArbitrationPoolIx", () => {
     const admin = fakePubkey(40);
     const openMint = fakePubkey(41);
-    const ix = initializeArbitrationPoolIx(admin, openMint);
+    const ix = initializeArbitrationPoolIx(
+      admin,
+      openMint,
+      LEGACY_TOKEN_PROGRAM_ID,
+    );
     expectDiscriminator(ix, [77, 223, 22, 51, 66, 236, 5, 90]);
     expectAccounts(ix, [
       { pubkey: admin, isSigner: true, isWritable: true },
       { pubkey: feeConfigPda()[0], isSigner: false, isWritable: false },
       { pubkey: openMint, isSigner: false, isWritable: false },
       { pubkey: arbitrationPoolPda()[0], isSigner: false, isWritable: true },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ]);
   });
@@ -275,6 +326,7 @@ describe("escrow instructions", () => {
     const ix = chargeAdListingFeeIx(
       merchant,
       openMint,
+      LEGACY_TOKEN_PROGRAM_ID,
       devTreasury,
       ecosystemTreasury,
       infraTreasury,
@@ -285,39 +337,65 @@ describe("escrow instructions", () => {
     expectAccounts(ix, [
       { pubkey: merchant, isSigner: true, isWritable: false },
       { pubkey: feeConfigPda()[0], isSigner: false, isWritable: false },
-      { pubkey: liquidityVaultPda(merchant, openMint)[0], isSigner: false, isWritable: true },
-      { pubkey: liquidityVaultTokensPda(merchant, openMint)[0], isSigner: false, isWritable: true },
+      {
+        pubkey: liquidityVaultPda(merchant, openMint)[0],
+        isSigner: false,
+        isWritable: true,
+      },
+      {
+        pubkey: liquidityVaultTokensPda(merchant, openMint)[0],
+        isSigner: false,
+        isWritable: true,
+      },
       { pubkey: devTreasury, isSigner: false, isWritable: true },
       { pubkey: ecosystemTreasury, isSigner: false, isWritable: true },
       { pubkey: infraTreasury, isSigner: false, isWritable: true },
       { pubkey: emergencyReserve, isSigner: false, isWritable: true },
       { pubkey: openMint, isSigner: false, isWritable: false },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);
     // The advertisement id is carried for the emitted event only; it must
     // still reach the program intact or an indexer cannot join on it.
-    expect(Array.from(ix.data.subarray(8, 40))).toEqual(Array.from(advertisementId));
+    expect(Array.from(ix.data.subarray(8, 40))).toEqual(
+      Array.from(advertisementId),
+    );
   });
 
   it("claimArbitrationRewardIx", () => {
     const arbitrator = fakePubkey(44);
     const openMint = fakePubkey(45);
     const to = fakePubkey(46);
-    const ix = claimArbitrationRewardIx(arbitrator, reservationId, openMint, to);
+    const ix = claimArbitrationRewardIx(
+      arbitrator,
+      reservationId,
+      openMint,
+      to,
+      LEGACY_TOKEN_PROGRAM_ID,
+    );
     expectDiscriminator(ix, [20, 88, 236, 69, 233, 200, 195, 238]);
     expectAccounts(ix, [
       { pubkey: arbitrator, isSigner: true, isWritable: false },
-      { pubkey: disputeCasePda(reservationId)[0], isSigner: false, isWritable: true },
+      {
+        pubkey: disputeCasePda(reservationId)[0],
+        isSigner: false,
+        isWritable: true,
+      },
       { pubkey: feeConfigPda()[0], isSigner: false, isWritable: false },
       { pubkey: openMint, isSigner: false, isWritable: false },
       { pubkey: arbitrationPoolPda()[0], isSigner: false, isWritable: true },
       { pubkey: to, isSigner: false, isWritable: true },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);
   });
 
   it("cancelReservationIx", () => {
-    const ix = cancelReservationIx(buyer, mint, merchant, reservationId);
+    const ix = cancelReservationIx(
+      buyer,
+      mint,
+      LEGACY_TOKEN_PROGRAM_ID,
+      merchant,
+      reservationId,
+    );
     expectDiscriminator(ix, [72, 162, 75, 180, 116, 157, 146, 172]);
     const [liquidityVault] = liquidityVaultPda(merchant, mint);
     const [tradeEscrow] = tradeEscrowPda(reservationId);
@@ -330,12 +408,17 @@ describe("escrow instructions", () => {
       { pubkey: tradeEscrow, isSigner: false, isWritable: true },
       { pubkey: tradeEscrowTokenVault, isSigner: false, isWritable: true },
       { pubkey: liquidityTokenVault, isSigner: false, isWritable: true },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);
   });
 
   it("expireReservationIx (permissionless)", () => {
-    const ix = expireReservationIx(mint, merchant, reservationId);
+    const ix = expireReservationIx(
+      mint,
+      LEGACY_TOKEN_PROGRAM_ID,
+      merchant,
+      reservationId,
+    );
     expectDiscriminator(ix, [19, 147, 203, 128, 237, 194, 72, 183]);
     const [liquidityVault] = liquidityVaultPda(merchant, mint);
     const [tradeEscrow] = tradeEscrowPda(reservationId);
@@ -347,7 +430,7 @@ describe("escrow instructions", () => {
       { pubkey: tradeEscrow, isSigner: false, isWritable: true },
       { pubkey: tradeEscrowTokenVault, isSigner: false, isWritable: true },
       { pubkey: liquidityTokenVault, isSigner: false, isWritable: true },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ]);
   });
 
@@ -359,13 +442,25 @@ describe("escrow instructions", () => {
     // which is exactly the cost barrier the design removes.
     const payer = fakePubkey(20);
     const depositMint = fakePubkey(30);
-    const ix = openDisputeCaseIx(buyer, payer, reservationId, 3_600n, 3_600n, merchant, depositMint);
+    const ix = openDisputeCaseIx(
+      buyer,
+      payer,
+      reservationId,
+      3_600n,
+      3_600n,
+      merchant,
+      depositMint,
+      LEGACY_TOKEN_PROGRAM_ID,
+    );
     expectDiscriminator(ix, [28, 229, 240, 113, 124, 180, 117, 138]);
     const [tradeEscrow] = tradeEscrowPda(reservationId);
     const [disputeCase] = disputeCasePda(reservationId);
     const [feeConfig] = feeConfigPda();
     const [merchantOpenVault] = liquidityVaultPda(merchant, depositMint);
-    const [merchantOpenTokenVault] = liquidityVaultTokensPda(merchant, depositMint);
+    const [merchantOpenTokenVault] = liquidityVaultTokensPda(
+      merchant,
+      depositMint,
+    );
     const [arbitrationPool] = arbitrationPoolPda();
     expectAccounts(ix, [
       { pubkey: buyer, isSigner: true, isWritable: false },
@@ -377,7 +472,7 @@ describe("escrow instructions", () => {
       { pubkey: merchantOpenVault, isSigner: false, isWritable: true },
       { pubkey: merchantOpenTokenVault, isSigner: false, isWritable: true },
       { pubkey: arbitrationPool, isSigner: false, isWritable: true },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       // Seeds this case's arbitrator draw. Without it the program cannot
       // seed the draw at all, and the address must be exact — a wrong one
@@ -416,7 +511,13 @@ describe("escrow instructions", () => {
     const arbitrator = fakePubkey(22);
     const arbitratorStake = fakePubkey(23);
     const salt = new Uint8Array(32).fill(9);
-    const ix = revealDisputeVoteIx(arbitrator, reservationId, DisputeOutcome.MerchantWins, salt, arbitratorStake);
+    const ix = revealDisputeVoteIx(
+      arbitrator,
+      reservationId,
+      DisputeOutcome.MerchantWins,
+      salt,
+      arbitratorStake,
+    );
     expectDiscriminator(ix, [211, 91, 1, 75, 154, 51, 233, 106]);
     const [disputeCase] = disputeCasePda(reservationId);
     const [stakingConfig] = stakingConfigPda();
@@ -432,7 +533,14 @@ describe("escrow instructions", () => {
 
   it("executeDisputeOutcomeIx (permissionless)", () => {
     const depositMint = fakePubkey(31);
-    const ix = executeDisputeOutcomeIx(mint, merchant, reservationId, destinations, depositMint);
+    const ix = executeDisputeOutcomeIx(
+      mint,
+      LEGACY_TOKEN_PROGRAM_ID,
+      merchant,
+      reservationId,
+      destinations,
+      depositMint,
+    );
     expectDiscriminator(ix, [158, 56, 238, 187, 219, 223, 212, 99]);
     const [disputeCase] = disputeCasePda(reservationId);
     const [tradeEscrow] = tradeEscrowPda(reservationId);
@@ -447,17 +555,37 @@ describe("escrow instructions", () => {
       { pubkey: tradeEscrowTokenVault, isSigner: false, isWritable: true },
       { pubkey: liquidityVault, isSigner: false, isWritable: true },
       { pubkey: liquidityTokenVault, isSigner: false, isWritable: true },
-      { pubkey: destinations.buyerTokenAccount, isSigner: false, isWritable: true },
+      {
+        pubkey: destinations.buyerTokenAccount,
+        isSigner: false,
+        isWritable: true,
+      },
       { pubkey: feeConfig, isSigner: false, isWritable: false },
       { pubkey: destinations.devTreasury, isSigner: false, isWritable: true },
-      { pubkey: destinations.ecosystemTreasury, isSigner: false, isWritable: true },
+      {
+        pubkey: destinations.ecosystemTreasury,
+        isSigner: false,
+        isWritable: true,
+      },
       { pubkey: destinations.infraTreasury, isSigner: false, isWritable: true },
-      { pubkey: destinations.emergencyReserve, isSigner: false, isWritable: true },
+      {
+        pubkey: destinations.emergencyReserve,
+        isSigner: false,
+        isWritable: true,
+      },
       { pubkey: depositMint, isSigner: false, isWritable: false },
       { pubkey: arbitrationPoolPda()[0], isSigner: false, isWritable: true },
-      { pubkey: liquidityVaultPda(merchant, depositMint)[0], isSigner: false, isWritable: true },
-      { pubkey: liquidityVaultTokensPda(merchant, depositMint)[0], isSigner: false, isWritable: true },
-      { pubkey: TOKEN_2022_PROGRAM_ID, isSigner: false, isWritable: false },
+      {
+        pubkey: liquidityVaultPda(merchant, depositMint)[0],
+        isSigner: false,
+        isWritable: true,
+      },
+      {
+        pubkey: liquidityVaultTokensPda(merchant, depositMint)[0],
+        isSigner: false,
+        isWritable: true,
+      },
+      { pubkey: LEGACY_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       // Carried even though a round that decides never touches it: a round
       // that falls short re-draws the case seed, and Anchor's account list
       // is fixed per instruction rather than per branch.
@@ -498,18 +626,32 @@ describe("escrow instructions", () => {
       { pubkey: feeConfig, isSigner: false, isWritable: true },
       { pubkey: mint, isSigner: false, isWritable: false },
       { pubkey: treasuries.devTreasury, isSigner: false, isWritable: false },
-      { pubkey: treasuries.ecosystemTreasury, isSigner: false, isWritable: false },
+      {
+        pubkey: treasuries.ecosystemTreasury,
+        isSigner: false,
+        isWritable: false,
+      },
       { pubkey: treasuries.infraTreasury, isSigner: false, isWritable: false },
-      { pubkey: treasuries.emergencyReserve, isSigner: false, isWritable: false },
+      {
+        pubkey: treasuries.emergencyReserve,
+        isSigner: false,
+        isWritable: false,
+      },
     ]);
     // Treasury pubkeys must NOT appear in the data — they come from
     // accounts. The trailing 4 + 32 + 32 is the settlement allowlist as a
     // Borsh Vec: a u32 length followed by two raw 32-byte keys.
-    expect(ix.data.length).toBe(8 + 8 + 8 + 2 + 2 + 2 + 2 + 2 + 8 + 8 + 2 + 4 + 32 + 32);
+    expect(ix.data.length).toBe(
+      8 + 8 + 8 + 2 + 2 + 2 + 2 + 2 + 8 + 8 + 2 + 4 + 32 + 32,
+    );
     // 8 disc + 8 + 8 + (5 x u16) + 8 + 8 + 2 = 52 bytes before the Vec.
     expect(ix.data.readUInt32LE(52)).toBe(2);
-    expect(Buffer.from(fakePubkey(46).toBytes()).equals(ix.data.subarray(56, 88))).toBe(true);
-    expect(Buffer.from(fakePubkey(47).toBytes()).equals(ix.data.subarray(88, 120))).toBe(true);
+    expect(
+      Buffer.from(fakePubkey(46).toBytes()).equals(ix.data.subarray(56, 88)),
+    ).toBe(true);
+    expect(
+      Buffer.from(fakePubkey(47).toBytes()).equals(ix.data.subarray(88, 120)),
+    ).toBe(true);
     expect(ix.data.readBigUInt64LE(8)).toBe(7n);
     expect(ix.data.readBigUInt64LE(16)).toBe(9n);
     expect(ix.data.readUInt16LE(24)).toBe(15);

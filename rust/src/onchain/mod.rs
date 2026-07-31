@@ -34,9 +34,28 @@ pub const STAKING_PROGRAM_ID: Pubkey = pubkey!("HYEXk8XQukBkZbiYB33JyVefQDxqyCpP
 /// `openfiat-governance`'s deployed program id.
 pub const GOVERNANCE_PROGRAM_ID: Pubkey = pubkey!("AVJfKUjHsizkGGUy8sdz4Xma2hVgmgvgg8GmUMs8E4eE");
 
-/// The SPL Token-2022 program — every token account/mint these three
-/// programs touch is a Token-2022 `InterfaceAccount` (OFS-4200 §4-6).
+/// The SPL Token-2022 program.
+///
+/// Still the right answer for staking and governance, which deal only in
+/// OPEN, and OPEN is a Token-2022 mint. It is **not** automatically the
+/// right answer for escrow: since the programs moved to
+/// `Interface<TokenInterface>`, a settlement mint may be legacy SPL —
+/// wSOL and real USDC both are — so escrow builders take the program as a
+/// parameter instead. See [`LEGACY_TOKEN_PROGRAM_ID`].
 pub const TOKEN_2022_PROGRAM_ID: Pubkey = pubkey!("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+/// The original SPL Token program.
+///
+/// Most mints in circulation are still this one, including wSOL and the
+/// real USDC and USDT. An escrow transaction naming Token-2022 for one of
+/// them is rejected by the runtime before the program sees it, which is
+/// the failure the `token_program` parameter on the escrow builders
+/// exists to make impossible to write by accident.
+///
+/// Neither constant is a default anywhere. A caller derives the right one
+/// from the mint account's own `owner` — the SDK cannot know it without an
+/// RPC round trip, and a builder that quietly performs network I/O is
+/// worse than one that asks.
+pub const LEGACY_TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 /// The Rent sysvar — required by every `init`-ing instruction (account
 /// creation reads it for rent-exemption).
 pub const RENT_SYSVAR_ID: Pubkey = pubkey!("SysvarRent111111111111111111111111111111111");
