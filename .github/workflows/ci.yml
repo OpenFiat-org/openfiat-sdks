@@ -70,8 +70,15 @@ jobs:
       - name: Start a real openfiat-node in the background
         working-directory: openfiat-core
         run: |
-          CLI_DATA_DIR=${{ runner.temp }}/openfiat-node-data CLI_HTTP_ADDR=127.0.0.1:7080 \
-            cargo run -p openfiat-cli &
+          # Flags, not environment variables. openfiat-node has been
+          # flags-only since #110 and reads neither CLI_DATA_DIR nor
+          # CLI_HTTP_ADDR; setting them worked here only because the
+          # built-in defaults happened to match what the curl below
+          # expects, which made this a silent trap rather than a working
+          # configuration.
+          cargo run -p openfiat-cli -- \
+            --ledger ${{ runner.temp }}/openfiat-node-data \
+            --rpc-bind-address 127.0.0.1:7080 &
           for _ in $(seq 1 60); do
             curl -sf http://127.0.0.1:7080/health && exit 0
             sleep 2

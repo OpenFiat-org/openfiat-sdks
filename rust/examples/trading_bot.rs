@@ -14,12 +14,13 @@
 use openfiat_advertisements::AdvertisementId;
 use openfiat_advertisements::events::AdvertisementCreate;
 use openfiat_advertisements::record::{Direction, PricingModel};
+use openfiat_crypto::MintAddress;
 use openfiat_network::identity::peer_id_from_public_key;
 use openfiat_reservations::ReservationId;
 use openfiat_reservations::events::ReservationRequest;
 use openfiat_sdk::wallet::Keypair;
 use openfiat_sdk::{Client, ClientConfig};
-use openfiat_types::{Amount, PeerId, Timestamp};
+use openfiat_types::{Amount, FiatCurrency, PeerId, Timestamp};
 
 fn peer_id(keypair: &Keypair) -> PeerId {
     peer_id_from_public_key(&keypair.public_key())
@@ -41,18 +42,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bot = Keypair::generate();
 
     println!("publishing a USDT/KES Sell advertisement...");
+    // The advertised price, bound once. The reservation below has to agree
+    // with it exactly, so naming it twice is how the two silently drift.
+    let advertised_price = Amount::new(12_950, 2);
     let create = AdvertisementCreate {
         id: AdvertisementId::new("example-trading-bot-ad"),
         merchant: peer_id(&merchant),
         merchant_public_key: merchant.public_key(),
-        asset: "USDT".to_string(),
+        // An advertisement names a mint, never a ticker. Two tokens can
+        // both call themselves USDT; only one is the one being sold, and
+        // the escrow settles against this address rather than the label.
+        asset_mint: MintAddress::parse("C4rSGhdxWhSFQuFcAxQti1JvBxriwHJoHtJjfhs5p24Y")
+            .expect("devnet USDT mint"),
         direction: Direction::Sell,
-        fiat_currency: "KES".to_string(),
+        fiat_currency: FiatCurrency::parse("KES")?,
+        // Trade limits and liquidity are denominated in the ASSET, not in
+        // the fiat currency above.
         min_trade: Amount::new(1_000, 2),
         max_trade: Amount::new(50_000, 2),
         initial_liquidity: Amount::new(200_000, 2),
         pricing: PricingModel::Fixed {
-            price: Amount::new(12_950, 2),
+            price: advertised_price,
         },
         payment_methods: vec!["M-Pesa".to_string()],
         timestamp: Timestamp::now(),
@@ -72,6 +82,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         requester: peer_id(&bot),
         requester_public_key: bot.public_key(),
         amount: Amount::new(5_000, 2),
+        // The price this bot is agreeing to, signed into the request. The
+        // node checks it follows from the advertisement's own terms and
+        // refuses the reservation with PRICE_DISAGREEMENT otherwise, so a
+        // merchant cannot re-price between the quote a bot read and the
+        // escrow it locks.
+        //
+        // This ad is Fixed, so the agreed price is simply what it
+        // advertises and there is no mid to record. Against a Floating ad
+        // a bot reads both from the quote on `get_advertisement`, and
+        // `agreed_mid` is what lets the node re-derive the same number
+        // from the same oracle observation rather than from its own.
+        agreed_price: advertised_price,
+        agreed_mid: None,
         timestamp: Timestamp::now(),
     };
     let reservation_id = client.send_reservation_request(request, &bot).await?;

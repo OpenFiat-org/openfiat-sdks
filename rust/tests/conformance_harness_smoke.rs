@@ -10,6 +10,32 @@ use openfiat_sdk::{Client, ClientConfig};
 use solana_keypair::Keypair;
 use solana_signer::Signer;
 
+/// The harness must load `staking.so` at the address core will look it up
+/// at, and core's is not configurable.
+///
+/// Since #105 a node reads `openfiat_chain::PROGRAM_IDS.staking` — a
+/// compile-time constant — rather than taking a program id from its
+/// configuration, so an operator cannot nominate the program whose accounts
+/// count as protocol stake. If this SDK's own `STAKING_PROGRAM_ID` ever
+/// drifts from that constant, nothing fails loudly: the fixture simply
+/// deploys staking somewhere core ignores, every `StakeAccount` lookup finds
+/// an account owned by an unexpected program, and every vote gets dropped.
+///
+/// `conformance_governance`'s proof would then keep passing while proving
+/// nothing — its negative case asserts that a spoofed claim IS dropped, and
+/// a claim dropped for the wrong reason is indistinguishable from one
+/// dropped for the right one. This is the assertion that keeps that test
+/// honest, so it is deliberately a hard equality rather than a skip.
+#[test]
+fn the_harness_loads_staking_where_core_will_look_for_it() {
+    assert_eq!(
+        support::core_staking_program_id().to_string(),
+        openfiat_sdk::onchain::STAKING_PROGRAM_ID.to_string(),
+        "this SDK and openfiat-core disagree about the staking program id, \
+         so every conformance vote would be dropped for the wrong reason"
+    );
+}
+
 #[tokio::test]
 async fn the_shared_conformance_harness_actually_works() {
     let fixtures = support::escrow_staking_governance_fixtures();

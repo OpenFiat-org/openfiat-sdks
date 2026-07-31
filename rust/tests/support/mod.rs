@@ -14,7 +14,7 @@
 
 use openfiat_chain::NodeChainMode;
 use openfiat_rpc::{NetworkConfig, RpcHandle};
-use openfiat_sdk::onchain::{ESCROW_PROGRAM_ID, GOVERNANCE_PROGRAM_ID, STAKING_PROGRAM_ID};
+use openfiat_sdk::onchain::{ESCROW_PROGRAM_ID, GOVERNANCE_PROGRAM_ID};
 use openfiat_storage::mem::MemoryStore;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
@@ -53,6 +53,37 @@ pub struct ProgramFixture {
     pub so_relative_path: &'static str,
 }
 
+/// Where a conformance node would serve snapshots from.
+///
+/// `openfiat_rpc::router` takes this as a third argument and merges
+/// `GET /snapshot/{id}` from it. A conformance node produces no snapshots,
+/// so the honest value is a directory that does not exist: that route then
+/// answers 404 for everything, which is exactly what a node with nothing to
+/// serve should say. Pointing it at a real temporary directory would be
+/// the same behaviour dressed up as capability the node does not have.
+fn snapshot_directory() -> PathBuf {
+    PathBuf::from("/nonexistent/openfiat-conformance-produces-no-snapshots")
+}
+
+/// The staking program id core will *actually* check against.
+///
+/// This is not the same kind of constant as the SDK's own
+/// [`STAKING_PROGRAM_ID`], and the difference is the point: since #105,
+/// a node no longer takes a staking program id from its configuration.
+/// `poll_vote_verifications` reads `openfiat_chain::PROGRAM_IDS.staking`,
+/// a compile-time constant, precisely so an operator cannot nominate the
+/// program whose accounts count as protocol stake.
+///
+/// So the harness has to load the staking fixture at the id core believes
+/// in, not merely at one the SDK agrees with — see
+/// [`the_harness_loads_staking_where_core_will_look_for_it`].
+pub fn core_staking_program_id() -> Pubkey {
+    openfiat_chain::PROGRAM_IDS
+        .staking
+        .parse()
+        .expect("core's pinned staking program id is a valid pubkey")
+}
+
 pub fn escrow_staking_governance_fixtures() -> [ProgramFixture; 3] {
     [
         ProgramFixture {
@@ -60,7 +91,7 @@ pub fn escrow_staking_governance_fixtures() -> [ProgramFixture; 3] {
             so_relative_path: "../../openfiat-core/programs/target/deploy/escrow.so",
         },
         ProgramFixture {
-            id: STAKING_PROGRAM_ID,
+            id: core_staking_program_id(),
             so_relative_path: "../../openfiat-core/programs/target/deploy/staking.so",
         },
         ProgramFixture {
@@ -323,21 +354,26 @@ pub async fn create_and_fund_token_account(
 }
 
 /// Real off-chain node in `RpcConnected` mode, pointed at the given
-/// validator's RPC URL, with `staking_program_id` wired so
-/// `poll_vote_verifications` (Phase 6) can genuinely verify a
-/// governance vote's on-chain stake. Returns `(http_base_url, RpcHandle)`.
+/// validator's RPC URL. Returns `(http_base_url, RpcHandle)`.
+///
+/// The node no longer takes a staking program id from its configuration:
+/// `poll_vote_verifications` reads `openfiat_chain::PROGRAM_IDS.staking`,
+/// a compile-time constant, precisely so an operator cannot name the
+/// program whose accounts count as protocol stake. That makes it this
+/// harness's job to load the staking fixture at the id core already
+/// believes in — see `staking_program_id_matches_the_pinned_protocol_id`.
 pub async fn spawn_node_with_chain(rpc_url: &str) -> (String, RpcHandle) {
     let network = NetworkConfig {
         chain_mode: NodeChainMode::RpcConnected {
             rpc_urls: vec![rpc_url.to_string()],
             ws_url: None,
         },
-        staking_program_id: Some(STAKING_PROGRAM_ID.to_string()),
         ..NetworkConfig::for_test()
     };
     let rpc_handle = openfiat_rpc::spawn_actor(MemoryStore::new, network);
     let metrics = std::sync::Arc::new(openfiat_metrics::MetricsRegistry::new());
-    let router = openfiat_rpc::router(rpc_handle.clone(), metrics).merge(openfiat_api::router());
+    let router = openfiat_rpc::router(rpc_handle.clone(), metrics, snapshot_directory())
+        .merge(openfiat_api::router());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await

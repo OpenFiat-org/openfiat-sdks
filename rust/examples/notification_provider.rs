@@ -1,10 +1,22 @@
 //! A minimal Notification Provider (OFS-6000): register with a node's
-//! Service Registry, a wallet subscribes to a category, then the provider
-//! reports a delivery.
+//! Service Registry, a wallet subscribes to a category, and the provider
+//! learns the rule that governs delivery reports.
+//!
+//! **A report is not self-attested.** A node accepts one only if it holds a
+//! matching dispatch record of its own, so this example ends by watching a
+//! well-formed, correctly-signed report be refused — because the node never
+//! routed the notification it names. That is the interesting part, and the
+//! reason this example is worth reading: a provider's compensation and
+//! reputation follow the volume it reports, so a report nobody can check is
+//! not evidence of work.
+//!
+//! Earning a receipt needs a real dispatch, which needs a subscription
+//! carrying a destination sealed to this gateway. Sealing is not exposed by
+//! this SDK yet, so that path is described here rather than performed.
 //!
 //! Run against a local node with `cargo run --example notification_provider`.
 //! By default it targets `http://localhost:7080` — start one with
-//! `CLI_HTTP_ADDR=127.0.0.1:7080 cargo run -p openfiat-cli` from
+//! `cargo run -p openfiat-cli -- --rpc-bind-address 127.0.0.1:7080` from
 //! `openfiat-core`.
 
 use openfiat_network::identity::peer_id_from_public_key;
@@ -62,11 +74,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         wallet: peer_id(&wallet),
         wallet_public_key: wallet.public_key(),
         enabled_categories: vec![NotificationCategory::Trading],
+        // Empty here, but the field must be present: the node verifies the
+        // signature against a re-serialization of this struct, so omitting
+        // it changes the bytes being hashed and the update comes back as
+        // INVALID_SIGNATURE. A real subscription carries a destination
+        // sealed to a chosen gateway, which is what makes dispatch — and
+        // therefore an acceptable delivery report — possible at all.
+        destinations: Vec::new(),
         timestamp: Timestamp::now(),
     };
     client.send_subscription_update(update, &wallet).await?;
 
-    println!("reporting a delivered trade-completed notification...");
+    println!("reporting a delivery for a notification this node never sent...");
     let report = DeliveryReport {
         notification_id: NotificationId::new("example-notification-1"),
         service_id,
@@ -77,12 +96,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         status: DeliveryStatus::Delivered,
         timestamp: Timestamp::now(),
     };
-    client.send_delivery_report(report, &provider).await?;
+    match client.send_delivery_report(report, &provider).await {
+        Err(refusal) => println!("refused, as it should be: {refusal}"),
+        Ok(_) => {
+            return Err(
+                "the node accepted a report for a notification it never dispatched — \
+                 that check is the only thing stopping a gateway inventing its own volume"
+                    .into(),
+            );
+        }
+    }
 
     let receipts = client
         .get_delivery_receipts_by_wallet(&peer_id(&wallet))
         .await?;
-    println!("delivery receipts for this wallet: {}", receipts.len());
+    println!(
+        "delivery receipts for this wallet: {} (a refused report leaves none)",
+        receipts.len()
+    );
 
     Ok(())
 }

@@ -2,42 +2,34 @@
 //! shape of its reply from a bare array to `{ advertisements, next_cursor }`.
 //!
 //! Offline, against a server that only records requests and replays
-//! scripted replies, because this SDK's `openfiat-core` dependencies are
-//! pinned to a fixed git revision (see `rust/Cargo.toml`) and the node
-//! built from that revision answers with the old array — `live_node.rs`
-//! could only prove the shape this change removed. What a capturing server
-//! *can* prove is the whole of the contract that lives on this side of the
-//! wire: that the narrowing goes out in the request rather than being
-//! applied to the reply, and that the resume point is the node's own
-//! cursor handed back untouched.
+//! scripted replies. That is not a limitation working around a stale
+//! dependency — it is what isolates the half of the contract that lives on
+//! this side of the wire: that the narrowing goes out in the *request*
+//! rather than being applied to the reply, and that the resume point is the
+//! node's own cursor handed back untouched. A live node would answer both
+//! correctly whether or not the SDK sent the filter at all.
 //!
-//! What it cannot prove is that the rows inside the envelope decode from a
-//! current node. They are `openfiat_advertisements::Advertisement` at the
-//! pinned revision, which still names its asset `asset` rather than
-//! `asset_mint`; the fixture below is built through that type on purpose,
-//! so bumping the pin turns this into a compile error at the exact field
-//! that changed instead of a passing test about the wrong shape.
-//!
-//! The two request bodies asserted here — `{"filter":{},"page":{}}` and a
-//! fully populated filter with a `page.limit` — were each replayed by hand
-//! against a node built from `openfiat-core` at HEAD and answered
-//! correctly, so the request half is known good and only the reply half is
-//! waiting on the pin. That check is a manual one and deliberately not
-//! automated here: automating it would mean this suite building a whole
-//! node from an unpinned revision, which is the thing the pin exists to
-//! stop.
+//! The row fixture is built through `openfiat_advertisements::Advertisement`
+//! itself rather than as hand-written JSON, so the two cannot describe
+//! different fields. That is load-bearing: when the pin moved to a core
+//! where an advertisement names a mint instead of a ticker, this file
+//! stopped compiling at exactly the field that changed, which is the
+//! failure mode worth having. A JSON literal would have kept passing while
+//! asserting the wrong shape.
 
 use axum::extract::State;
 use axum::routing::post;
 use axum::{Json, Router};
 use openfiat_advertisements::record::PricingModel;
 use openfiat_advertisements::{Advertisement, AdvertisementId, AdvertisementStatus, Direction};
+use openfiat_crypto::MintAddress;
 use openfiat_network::identity::peer_id_from_public_key;
 use openfiat_sdk::methods::advertisements::{
     AdvertisementFilter, AdvertisementPageRequest, AdvertisementQuery,
 };
 use openfiat_sdk::wallet::Keypair;
 use openfiat_sdk::{Client, ClientConfig};
+use openfiat_types::FiatCurrency;
 use serde_json::{Value, json};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -98,9 +90,12 @@ fn row(id: &str) -> Value {
         id: AdvertisementId::new(id),
         merchant: peer_id_from_public_key(&keypair.public_key()).unwrap(),
         merchant_public_key: keypair.public_key(),
-        asset: "USDC".to_string(),
+        // The same devnet USDC mint the filter below asks for, so the row
+        // this fixture builds is genuinely one the query would match.
+        asset_mint: MintAddress::parse("2bHPi5hA4zrmPAfrvLmEexg3KJjpTjNkUcxWnzUPeRRU")
+            .expect("devnet USDC mint"),
         direction: Direction::Sell,
-        fiat_currency: "KES".to_string(),
+        fiat_currency: FiatCurrency::parse("KES").expect("KES is a currency code"),
         min_trade: openfiat_types::Amount::new(1_000, 2),
         max_trade: openfiat_types::Amount::new(50_000, 2),
         available_liquidity: openfiat_types::Amount::new(200_000, 2),

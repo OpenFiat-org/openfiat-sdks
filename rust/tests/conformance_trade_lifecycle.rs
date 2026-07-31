@@ -49,7 +49,7 @@ mod support;
 use openfiat_advertisements::AdvertisementId;
 use openfiat_advertisements::events::AdvertisementCreate;
 use openfiat_advertisements::record::{Direction, PricingModel};
-use openfiat_crypto::Keypair as OpenfiatKeypair;
+use openfiat_crypto::{Keypair as OpenfiatKeypair, MintAddress};
 use openfiat_network::identity::peer_id_from_public_key;
 use openfiat_reservations::ReservationId;
 use openfiat_reservations::events::ReservationRequest;
@@ -57,7 +57,7 @@ use openfiat_sdk::onchain::escrow;
 use openfiat_sdk::{Client, ClientConfig};
 use openfiat_settlement::SettlementId;
 use openfiat_settlement::events::{PaymentSubmitted, SettlementApproved, SettlementInitiate};
-use openfiat_types::{Amount, Timestamp};
+use openfiat_types::{Amount, FiatCurrency, Timestamp};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_keypair::Keypair as SolanaKeypair;
 use solana_message::Message;
@@ -194,18 +194,23 @@ async fn a_trade_completes_end_to_end_with_a_real_on_chain_escrow_release() {
     let buyer_peer = peer_id_from_public_key(&buyer_of.public_key()).unwrap();
 
     let ad_id = AdvertisementId::new("conformance-ad-1");
+    // Bound once: the reservation below signs the price it agrees to, and
+    // the node refuses it with PRICE_DISAGREEMENT unless it follows from
+    // this advertisement's own terms.
+    let advertised_price = Amount::new(56_50, 2);
     let create_ad = AdvertisementCreate {
         id: ad_id.clone(),
         merchant: merchant_peer.clone(),
         merchant_public_key: merchant_of.public_key(),
-        asset: "USDT".to_string(),
+        asset_mint: MintAddress::parse("C4rSGhdxWhSFQuFcAxQti1JvBxriwHJoHtJjfhs5p24Y")
+            .expect("devnet USDT mint"),
         direction: Direction::Sell,
-        fiat_currency: "PHP".to_string(),
+        fiat_currency: FiatCurrency::parse("PHP").expect("PHP is a currency code"),
         min_trade: Amount::new(10_00, 2),
         max_trade: Amount::new(100_000, 2),
         initial_liquidity: Amount::new(100_000, 2),
         pricing: PricingModel::Fixed {
-            price: Amount::new(56_50, 2),
+            price: advertised_price,
         },
         payment_methods: vec!["GCash".to_string()],
         timestamp: Timestamp::now(),
@@ -223,6 +228,8 @@ async fn a_trade_completes_end_to_end_with_a_real_on_chain_escrow_release() {
         requester: buyer_peer.clone(),
         requester_public_key: buyer_of.public_key(),
         amount: Amount::new(reservation_amount_open * 100, 2),
+        agreed_price: advertised_price,
+        agreed_mid: None,
         timestamp: Timestamp::now(),
     };
     client

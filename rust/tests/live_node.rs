@@ -7,6 +7,7 @@
 use openfiat_advertisements::AdvertisementId;
 use openfiat_advertisements::events::AdvertisementCreate;
 use openfiat_advertisements::record::{Direction, PricingModel};
+use openfiat_crypto::MintAddress;
 use openfiat_governance::events::ProposalCreate;
 use openfiat_governance::record::ProposalCategory;
 use openfiat_network::identity::peer_id_from_public_key;
@@ -22,7 +23,9 @@ use openfiat_sdk::{Client, ClientConfig};
 use openfiat_sessions::SessionId;
 use openfiat_sessions::events::{SessionCreate, SessionRevoke};
 use openfiat_storage::mem::MemoryStore;
-use openfiat_types::{Amount, NotificationChannel, PeerId, ServiceId, ServiceType, Timestamp};
+use openfiat_types::{
+    Amount, FiatCurrency, NotificationChannel, PeerId, ServiceId, ServiceType, Timestamp,
+};
 use std::sync::Arc;
 
 fn peer_id(keypair: &Keypair) -> PeerId {
@@ -34,7 +37,11 @@ async fn spawn_node() -> String {
     let rpc_handle =
         openfiat_rpc::spawn_actor(MemoryStore::new, openfiat_rpc::NetworkConfig::for_test());
     let metrics = Arc::new(openfiat_metrics::MetricsRegistry::new());
-    let router = openfiat_rpc::router(rpc_handle, metrics).merge(openfiat_api::router());
+    // A directory that does not exist: this node produces no snapshots, so
+    // the merged `GET /snapshot/{id}` route correctly answers 404 for
+    // everything rather than pretending to a capability it lacks.
+    let snapshots = std::path::PathBuf::from("/nonexistent/live-node-produces-no-snapshots");
+    let router = openfiat_rpc::router(rpc_handle, metrics, snapshots).merge(openfiat_api::router());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -213,18 +220,23 @@ async fn a_trading_bots_reservation_locks_escrow_against_a_published_advertiseme
     let merchant = Keypair::generate();
     let bot = Keypair::generate();
 
+    // Bound once, because the reservation below must agree with it and a
+    // second literal is how the two drift into a PRICE_DISAGREEMENT that
+    // looks like a protocol bug.
+    let advertised_price = Amount::new(12_950, 2);
     let create = AdvertisementCreate {
         id: AdvertisementId::new("live-node-trading-bot-ad"),
         merchant: peer_id(&merchant),
         merchant_public_key: merchant.public_key(),
-        asset: "USDT".to_string(),
+        asset_mint: MintAddress::parse("C4rSGhdxWhSFQuFcAxQti1JvBxriwHJoHtJjfhs5p24Y")
+            .expect("devnet USDT mint"),
         direction: Direction::Sell,
-        fiat_currency: "KES".to_string(),
+        fiat_currency: FiatCurrency::parse("KES").expect("KES is a currency code"),
         min_trade: Amount::new(1_000, 2),
         max_trade: Amount::new(50_000, 2),
         initial_liquidity: Amount::new(200_000, 2),
         pricing: PricingModel::Fixed {
-            price: Amount::new(12_950, 2),
+            price: advertised_price,
         },
         payment_methods: vec!["M-Pesa".to_string()],
         timestamp: Timestamp::now(),
@@ -240,6 +252,12 @@ async fn a_trading_bots_reservation_locks_escrow_against_a_published_advertiseme
         requester: peer_id(&bot),
         requester_public_key: bot.public_key(),
         amount: Amount::new(5_000, 2),
+        // Signed into the request, and checked by the node against the
+        // advertisement's own terms rather than against the node's oracle
+        // view — see `PricingModel::agrees_with`. A Fixed ad's agreed price
+        // is just what it advertises, and it has no mid to record.
+        agreed_price: advertised_price,
+        agreed_mid: None,
         timestamp: Timestamp::now(),
     };
     let reservation_id = client
@@ -288,7 +306,15 @@ async fn a_notification_providers_delivery_report_is_readable_back_for_the_walle
                 service_type: ServiceType::Notifications(NotificationChannel::Webhook),
                 provider: peer_id(&provider),
                 provider_public_key: provider.public_key(),
-                endpoints: vec!["https://example.invalid/webhook".to_string()],
+                // Loopback, not `example.invalid`. A node now refuses to
+                // register an endpoint in an RFC 2606/6761 reserved domain
+                // at all: a signed registration replicates to every node
+                // and is offered to users as live infrastructure, so an
+                // address that can never resolve is not a harmless
+                // placeholder — it is a fabricated service nobody can
+                // delete. `.localhost` stays allowed, because it resolves
+                // and means exactly what it says.
+                endpoints: vec!["http://localhost:7080/webhook".to_string()],
                 supported_ofs: vec![1500, 6000],
                 region: None,
                 capabilities: vec!["Webhook".to_string()],
@@ -307,6 +333,13 @@ async fn a_notification_providers_delivery_report_is_readable_back_for_the_walle
                 wallet: peer_id(&wallet),
                 wallet_public_key: wallet.public_key(),
                 enabled_categories: vec![NotificationCategory::Trading],
+                // Empty, but present. The node verifies the signature
+                // against a re-serialization of this struct, so a missing
+                // field would make the bytes it hashes differ from the
+                // bytes signed here and the update would be refused as
+                // INVALID_SIGNATURE rather than as anything to do with
+                // destinations.
+                destinations: Vec::new(),
                 timestamp: Timestamp::now(),
             },
             &wallet,
@@ -314,7 +347,24 @@ async fn a_notification_providers_delivery_report_is_readable_back_for_the_walle
         .await
         .unwrap();
 
-    client
+    // A registered provider, signing correctly, reporting a delivery for a
+    // notification this node never dispatched. It is refused, and no
+    // receipt is written.
+    //
+    // This used to succeed, and that was the bug. A provider's report is
+    // self-attested, and its reputation and compensation depend on the
+    // volume it claims, so accepting an arbitrary notification id let any
+    // registered gateway manufacture evidence of work nobody asked it to
+    // do. `NotificationRegistry::apply_delivery_report` now requires a
+    // matching `DispatchRecord` this node made itself, and cross-checks the
+    // service, recipient and trigger against it.
+    //
+    // Note what that costs: a node that never routed a given notification
+    // drops a report it cannot check. That is deliberate and recoverable —
+    // the nodes that did route it still accept and gossip the report, and
+    // dispatch is deterministic — whereas accepting an uncheckable claim
+    // would write it into replicated state permanently.
+    let refused = client
         .send_delivery_report(
             DeliveryReport {
                 notification_id: NotificationId::new("live-node-notification-1"),
@@ -328,13 +378,36 @@ async fn a_notification_providers_delivery_report_is_readable_back_for_the_walle
             },
             &provider,
         )
-        .await
-        .unwrap();
+        .await;
+    // Asserted on the specific refusal, not merely on `is_err()`. A bare
+    // error check would pass just as happily if the report had been thrown
+    // out for a malformed signature or an unregistered service — failing
+    // for the wrong reason looks identical from here, and would leave the
+    // property this test exists for completely unguarded.
+    let message = match refused {
+        Err(error) => error.to_string(),
+        Ok(_) => panic!(
+            "the node accepted a report for a notification it never dispatched — \
+             that check is the only thing stopping a gateway inventing its own volume"
+        ),
+    };
+    assert!(
+        message.contains("RESOURCE_NOT_FOUND"),
+        "expected the report to be refused as an unknown notification, got: {message}"
+    );
 
     let receipts = client
         .get_delivery_receipts_by_wallet(&peer_id(&wallet))
         .await
         .unwrap();
-    assert_eq!(receipts.len(), 1);
-    assert_eq!(receipts[0].status, DeliveryStatus::Delivered);
+    assert!(
+        receipts.is_empty(),
+        "a refused report must not leave a receipt behind"
+    );
+
+    // The accepted path is deliberately not exercised here, matching the
+    // TypeScript suite. It needs a real dispatch, which needs a
+    // subscription carrying a destination sealed to this gateway — and
+    // sealing is not exposed by either SDK yet. Faking it by relaxing the
+    // node's check would delete the property this test now protects.
 }
