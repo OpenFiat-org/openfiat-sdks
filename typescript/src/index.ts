@@ -29,6 +29,7 @@ export * as node from "./methods/node.js";
 export * as notifications from "./methods/notifications.js";
 export * as oracles from "./methods/oracles.js";
 export * as providers from "./methods/providers.js";
+export * as reference from "./methods/reference.js";
 export * as reservations from "./methods/reservations.js";
 export * as settlement from "./methods/settlement.js";
 export * as trade from "./methods/trade.js";

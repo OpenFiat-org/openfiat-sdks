@@ -13,6 +13,7 @@ pub mod notifications;
 pub mod oracles;
 pub mod providers;
 pub mod redaction;
+pub mod reference;
 pub mod reputation;
 pub mod reservations;
 pub mod risk;

@@ -1049,3 +1049,99 @@ export interface DeliveryReceipt {
   status: DeliveryStatus;
   updated_at: TimestampMs;
 }
+
+// --- Reference data ---
+
+/**
+ * Which kind of rail a payment method is, so a long list can be grouped
+ * into something a person can read.
+ *
+ * These are the Rust enum's variant names verbatim, not display strings:
+ * `serde` writes `MobileMoney`, and an interface that wants "Mobile
+ * Money" on screen formats it there.
+ */
+export type PaymentMethodCategory = "MobileMoney" | "BankTransfer" | "Fintech" | "Cash";
+
+export interface ReferenceCurrency {
+  /** Three-letter, uppercase — normalised by the node before it is sent. */
+  code: string;
+  name: string;
+  /**
+   * The symbol as written locally ("KSh", "₦", "£"). Not unique — eleven
+   * of these are "$" — so it is decoration beside a code, never a key.
+   */
+  symbol: string;
+}
+
+export interface ReferenceCountry {
+  /**
+   * ISO 3166-1 alpha-2 where one exists, or a stable pseudo-code (`XNC`,
+   * `XTR`) for a territory that has none. Do not assume two characters.
+   */
+  code: string;
+  name: string;
+  /** The currency most trade here is denominated in. */
+  currency: string;
+  /**
+   * Other currencies in genuine everyday circulation, most-used first,
+   * and empty for most countries. A picker that offers only `currency`
+   * hides the USD book in a dollarised economy, which is frequently the
+   * larger of the two.
+   */
+  alt_currencies: string[];
+}
+
+export interface ReferencePaymentMethod {
+  /** Shown to a user, and stored on an advertisement verbatim. */
+  name: string;
+  category: PaymentMethodCategory;
+  /** Lowercase spellings a person might type when they mean this method. Never shown. */
+  aliases: string[];
+}
+
+export interface ReferenceMint {
+  /** Base58 mint address. The only field that identifies anything. */
+  mint: string;
+  /**
+   * What people call it: `wSOL`, `USDC`, `tUSDC`. A nickname, not a
+   * key — cluster-dependent, not unique, and carried on no record this
+   * protocol defines. Look a mint up by address; a client matching on the
+   * ticker it expected is how a market page for `SOL` came to be one that
+   * could never show an advertisement.
+   */
+  symbol: string;
+  /**
+   * Base-unit exponent, carried beside the symbol so a client cannot know
+   * what to call a mint while guessing how to scale it. wSOL is 9 and the
+   * stablecoins are 6.
+   */
+  decimals: number;
+}
+
+/**
+ * The countries, fiat currencies, payment methods and token mints a node
+ * suggests an interface offer — see {@link getReferenceData}, which explains why this
+ * is a suggestion list and never a validation gate.
+ */
+export interface ReferenceData {
+  /**
+   * A digest of the four lists, changing when and only when they do.
+   *
+   * Two uses a version number cannot serve: cache on it across node
+   * releases that did not touch the table, and compare two nodes for
+   * agreement by one short string rather than diffing five hundred rows.
+   */
+  revision: string;
+  currencies: ReferenceCurrency[];
+  countries: ReferenceCountry[];
+  payment_methods: ReferencePaymentMethod[];
+  /**
+   * Mints this node can put a name to.
+   *
+   * NOT the settlement allowlist. That lives on chain in the escrow
+   * program’s `FeeConfig` and governance can change it; this is a
+   * phrasebook for turning an address into a name, and the two sets are
+   * not guaranteed equal in either direction.
+   */
+  mints: ReferenceMint[];
+}
