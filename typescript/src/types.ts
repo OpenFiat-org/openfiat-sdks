@@ -540,12 +540,30 @@ export interface AdvertisementFilter {
    */
   amount?: Amount | undefined;
   /**
-   * Defaults to `"Active"`. A disabled or deleted advertisement cannot be
-   * traded against, so returning one by default would be offering
-   * something that is not on offer; naming a status explicitly is a
-   * merchant reviewing their own book.
+   * Whose advertisements, by merchant PeerId.
+   *
+   * The question a merchant console asks, answered at the node. Reading
+   * the whole book and keeping the matching rows works and makes the node
+   * serialize every advertisement on the network so the caller can
+   * discard nearly all of them.
    */
-  status?: AdvertisementStatus | undefined;
+  merchant?: Base58PeerId | undefined;
+  /**
+   * Which states count. Absent means `["Active"]`.
+   *
+   * A disabled or deleted advertisement cannot be traded against, so
+   * returning one by default would be offering something that is not on
+   * offer.
+   *
+   * A set rather than one value, because the caller that needs something
+   * other than the default needs several: a merchant's console shows a
+   * paused advertisement beside the live ones, since it is the only
+   * screen that can put it back on offer.
+   *
+   * An empty array asks for nothing and gets nothing — it is not read as
+   * "no constraint".
+   */
+  statuses?: AdvertisementStatus[] | undefined;
 }
 
 /** Where to resume from, and how much to take. */

@@ -165,7 +165,8 @@ async fn the_filter_travels_in_the_request_rather_than_being_applied_to_the_repl
                 direction: Some(Direction::Sell),
                 payment_method: Some("M-Pesa".to_string()),
                 amount: Some(openfiat_types::Amount::new(5_000, 2)),
-                status: None,
+                merchant: None,
+                statuses: None,
             },
             page: AdvertisementPageRequest {
                 after: None,

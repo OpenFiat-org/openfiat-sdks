@@ -43,7 +43,7 @@ use openfiat_advertisements::events::{
 use openfiat_advertisements::pricing::PriceQuote;
 use openfiat_advertisements::{Advertisement, AdvertisementId, AdvertisementStatus, Direction};
 use openfiat_crypto::{Keypair, MintAddress};
-use openfiat_types::{Amount, FiatCurrency};
+use openfiat_types::{Amount, FiatCurrency, PeerId};
 
 /// What a trader actually chooses by, sent to the node rather than
 /// applied to the reply.
@@ -87,12 +87,24 @@ pub struct AdvertisementFilter {
     /// unexpectedly empty result here is almost always this.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amount: Option<Amount>,
-    /// Defaults to [`AdvertisementStatus::Active`]. Something disabled or
-    /// deleted cannot be traded against, so returning it by default would
-    /// be offering what is not on offer; naming a status is a merchant
-    /// reviewing their own book.
+    /// Whose advertisements, by merchant PeerId.
+    ///
+    /// The question a merchant console asks, answered at the node.
+    /// Reading the whole book and keeping the matching rows works and
+    /// makes the node serialize every advertisement on the network so the
+    /// caller can discard nearly all of them.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<AdvertisementStatus>,
+    pub merchant: Option<PeerId>,
+    /// Which states count. Absent means active only — something disabled
+    /// or deleted cannot be traded against, so returning it by default
+    /// would be offering what is not on offer.
+    ///
+    /// A set rather than one value: a merchant's console shows a paused
+    /// advertisement beside the live ones, since it is the only screen
+    /// that can put it back. An empty vector asks for nothing and gets
+    /// nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub statuses: Option<Vec<AdvertisementStatus>>,
 }
 
 /// Where to resume from, and how much to take.
