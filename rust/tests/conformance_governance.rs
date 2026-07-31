@@ -97,11 +97,11 @@ async fn a_real_vote_is_weighed_by_its_real_on_chain_stake_not_its_self_report()
         &mint.pubkey(),
         // min_stake_by_role: 1 token each (this mint's own decimals)
         [1_000_000_000; openfiat_sdk::onchain::ROLE_COUNT],
-        60,              // unbonding_period_secs
-        1_000,           // slash_bps (10%)
-        &admin.pubkey(), // slashing_authority
-        &admin.pubkey(), // slash_destination
-        &admin.pubkey(), // rewards_authority
+        [60; openfiat_sdk::onchain::ROLE_COUNT], // unbonding_period_secs_by_role
+        1_000,                                   // slash_bps (10%)
+        &admin.pubkey(),                         // slashing_authority
+        &admin.pubkey(),                         // slash_destination
+        &admin.pubkey(),                         // rewards_authority
     );
     support::submit(&rpc_client, &admin, &[staking_config_ix], &[]).await;
 

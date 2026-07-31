@@ -50,7 +50,8 @@ export function stakeAccountPda(owner: PublicKey, role: Role): [PublicKey, numbe
 export interface InitializeStakingConfigParams {
   /** Indexed by `Role`; must have exactly ROLE_COUNT entries. */
   minStakeByRole: bigint[];
-  unbondingPeriodSecs: bigint;
+  /** Indexed by `Role`; must have exactly ROLE_COUNT entries. */
+  unbondingPeriodSecsByRole: bigint[];
   slashBps: number;
   slashingAuthority: PublicKey;
   slashDestination: PublicKey;
@@ -60,13 +61,27 @@ export interface InitializeStakingConfigParams {
 /** Borsh encodes a fixed-size array as its elements back to back, with no
  *  length prefix — so a wrong-length array here would silently shift every
  *  field after it rather than failing. */
-function minStakeByRoleBytes(minStakeByRole: bigint[]): Uint8Array[] {
-  if (minStakeByRole.length !== ROLE_COUNT) {
-    throw new Error(
-      `minStakeByRole must have exactly ${ROLE_COUNT} entries, got ${minStakeByRole.length}`,
-    );
+function roleArrayBytes(
+  name: string,
+  values: bigint[],
+  encode: (value: bigint) => Uint8Array,
+): Uint8Array[] {
+  if (values.length !== ROLE_COUNT) {
+    throw new Error(`${name} must have exactly ${ROLE_COUNT} entries, got ${values.length}`);
   }
-  return minStakeByRole.map(u64LE);
+  return values.map(encode);
+}
+
+function minStakeByRoleBytes(minStakeByRole: bigint[]): Uint8Array[] {
+  return roleArrayBytes("minStakeByRole", minStakeByRole, u64LE);
+}
+
+/** `unbonding_period_secs_by_role` was one flat `i64` until OFS-4100 §4
+ *  gave each role its own period. A caller still sending the flat field
+ *  emits ROLE_COUNT-1 i64s too few, which fails Borsh deserialization on
+ *  the program — loudly, but only once the transaction is simulated. */
+function unbondingByRoleBytes(unbondingPeriodSecsByRole: bigint[]): Uint8Array[] {
+  return roleArrayBytes("unbondingPeriodSecsByRole", unbondingPeriodSecsByRole, i64LE);
 }
 
 export function initializeStakingConfigIx(
@@ -92,7 +107,7 @@ export function initializeStakingConfigIx(
     data: instructionData(
       DISCRIMINATORS.initializeStakingConfig,
       ...minStakeByRoleBytes(params.minStakeByRole),
-      i64LE(params.unbondingPeriodSecs),
+      ...unbondingByRoleBytes(params.unbondingPeriodSecsByRole),
       u16LE(params.slashBps),
       params.slashingAuthority.toBytes(),
       params.slashDestination.toBytes(),
@@ -103,7 +118,8 @@ export function initializeStakingConfigIx(
 
 export interface UpdateStakingConfigParams {
   minStakeByRole: bigint[];
-  unbondingPeriodSecs: bigint;
+  /** Indexed by `Role`; must have exactly ROLE_COUNT entries. */
+  unbondingPeriodSecsByRole: bigint[];
   slashBps: number;
   slashingAuthority: PublicKey;
   rewardsAuthority: PublicKey;
@@ -136,7 +152,7 @@ export function updateStakingConfigIx(
     data: instructionData(
       DISCRIMINATORS.updateStakingConfig,
       ...minStakeByRoleBytes(params.minStakeByRole),
-      i64LE(params.unbondingPeriodSecs),
+      ...unbondingByRoleBytes(params.unbondingPeriodSecsByRole),
       u16LE(params.slashBps),
       params.slashingAuthority.toBytes(),
       params.rewardsAuthority.toBytes(),

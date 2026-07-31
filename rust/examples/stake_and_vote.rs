@@ -38,8 +38,8 @@ fn main() {
         [
             1_000_000, 5_000_000, 1_000_000, 5_000_000, 1_000_000, 1_000_000, 1_000_000,
         ],
-        7 * 24 * 3600, // unbonding_period_secs
-        500,           // slash_bps (5%)
+        [7 * 24 * 3600; openfiat_sdk::onchain::ROLE_COUNT], // unbonding_period_secs_by_role
+        500,                                                // slash_bps (5%)
         &admin.pubkey(),
         &admin.pubkey(),
         &admin.pubkey(),

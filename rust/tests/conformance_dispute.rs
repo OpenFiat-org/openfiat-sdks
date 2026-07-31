@@ -158,7 +158,7 @@ async fn a_disputed_trade_reaches_a_stake_weighted_onchain_outcome_and_the_offch
         &admin.pubkey(),
         &mint.pubkey(),
         min_stake_by_role,
-        604_800,
+        [604_800; openfiat_sdk::onchain::ROLE_COUNT],
         1000,
         &admin.pubkey(),
         &dev_treasury.pubkey(),

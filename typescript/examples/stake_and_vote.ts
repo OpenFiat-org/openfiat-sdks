@@ -30,7 +30,7 @@ function main() {
   const stakingIxs = [
     onchain.staking.initializeStakingConfigIx(admin.publicKey, mint, {
       minStakeByRole: [1_000n, 5_000n, 1_000n, 5_000n, 1_000n, 1_000n, 1_000n],
-      unbondingPeriodSecs: 604_800n, // 7 days
+      unbondingPeriodSecsByRole: Array<bigint>(ROLE_COUNT).fill(604_800n), // 7 days
       slashBps: 500, // 5%
       slashingAuthority: admin.publicKey,
       slashDestination: Keypair.generate().publicKey,

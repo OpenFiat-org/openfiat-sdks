@@ -23,6 +23,7 @@ import {
   Role,
   STAKING_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
+  ROLE_COUNT,
 } from "../src/onchain/constants.js";
 import { expectAccounts, expectDiscriminator, fakePubkey } from "./onchain-helpers.js";
 
@@ -57,7 +58,7 @@ describe("staking instructions", () => {
     const admin = fakePubkey(10);
     const ix = initializeStakingConfigIx(admin, mint, {
       minStakeByRole: [1_000n, 5_000n, 1_000n, 5_000n, 1_000n, 1_000n, 1_000n],
-      unbondingPeriodSecs: 604_800n,
+      unbondingPeriodSecsByRole: Array<bigint>(ROLE_COUNT).fill(604_800n),
       slashBps: 500,
       slashingAuthority: fakePubkey(11),
       slashDestination: fakePubkey(12),
@@ -233,7 +234,7 @@ describe("staking instructions", () => {
     const rewardsAuthority = fakePubkey(73);
     const ix = updateStakingConfigIx(admin, mint, slashDestination, {
       minStakeByRole: [1n, 2n, 3n, 4n, 5n, 6n, 7n],
-      unbondingPeriodSecs: 604_800n,
+      unbondingPeriodSecsByRole: Array<bigint>(ROLE_COUNT).fill(604_800n),
       slashBps: 1_000,
       slashingAuthority,
       rewardsAuthority,
@@ -245,9 +246,12 @@ describe("staking instructions", () => {
       { pubkey: mint, isSigner: false, isWritable: false },
       { pubkey: slashDestination, isSigner: false, isWritable: false },
     ]);
-    // Authorities are trailing keys in the payload: 7 role minimums, an
-    // i64 and a u16 precede them.
-    const authoritiesAt = 8 + 7 * 8 + 8 + 2;
+    // Authorities are trailing keys in the payload: 7 role minimums, 7
+    // per-role unbonding periods and a u16 precede them. The unbonding
+    // field was a single i64 until OFS-4100 §4 made it per-role, so this
+    // offset moved by 48 bytes — which is exactly the shift that would
+    // otherwise have gone unnoticed.
+    const authoritiesAt = 8 + ROLE_COUNT * 8 + ROLE_COUNT * 8 + 2;
     expect(Array.from(ix.data.subarray(authoritiesAt, authoritiesAt + 32))).toEqual(
       Array.from(slashingAuthority.toBytes()),
     );

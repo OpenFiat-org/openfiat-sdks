@@ -48,7 +48,13 @@ pub fn stake_account_pda(owner: &Pubkey, role: Role) -> (Pubkey, u8) {
 #[derive(BorshSerialize)]
 struct InitializeStakingConfigParams {
     min_stake_by_role: [u64; ROLE_COUNT],
-    unbonding_period_secs: i64,
+    /// One flat `i64` until OFS-4100 §4 gave each role its own period.
+    /// Borsh writes a fixed-size array as its elements back to back with
+    /// no length prefix, so sending the old flat field emits
+    /// `ROLE_COUNT - 1` too few `i64`s and shifts every field after it —
+    /// which fails deserialization on the program rather than silently
+    /// storing the wrong values, but only once the transaction runs.
+    unbonding_period_secs_by_role: [i64; ROLE_COUNT],
     slash_bps: u16,
     slashing_authority: Pubkey,
     slash_destination: Pubkey,
@@ -61,7 +67,7 @@ pub fn initialize_staking_config_ix(
     admin: &Pubkey,
     mint: &Pubkey,
     min_stake_by_role: [u64; ROLE_COUNT],
-    unbonding_period_secs: i64,
+    unbonding_period_secs_by_role: [i64; ROLE_COUNT],
     slash_bps: u16,
     slashing_authority: &Pubkey,
     slash_destination: &Pubkey,
@@ -74,7 +80,7 @@ pub fn initialize_staking_config_ix(
         [78, 164, 6, 115, 206, 48, 168, 105],
         InitializeStakingConfigParams {
             min_stake_by_role,
-            unbonding_period_secs,
+            unbonding_period_secs_by_role,
             slash_bps,
             slashing_authority: *slashing_authority,
             slash_destination: *slash_destination,
@@ -103,7 +109,13 @@ pub fn initialize_staking_config_ix(
 #[derive(BorshSerialize)]
 struct UpdateStakingConfigParams {
     min_stake_by_role: [u64; ROLE_COUNT],
-    unbonding_period_secs: i64,
+    /// One flat `i64` until OFS-4100 §4 gave each role its own period.
+    /// Borsh writes a fixed-size array as its elements back to back with
+    /// no length prefix, so sending the old flat field emits
+    /// `ROLE_COUNT - 1` too few `i64`s and shifts every field after it —
+    /// which fails deserialization on the program rather than silently
+    /// storing the wrong values, but only once the transaction runs.
+    unbonding_period_secs_by_role: [i64; ROLE_COUNT],
     slash_bps: u16,
     slashing_authority: Pubkey,
     rewards_authority: Pubkey,
@@ -122,7 +134,7 @@ pub fn update_staking_config_ix(
     mint: &Pubkey,
     slash_destination: &Pubkey,
     min_stake_by_role: [u64; ROLE_COUNT],
-    unbonding_period_secs: i64,
+    unbonding_period_secs_by_role: [i64; ROLE_COUNT],
     slash_bps: u16,
     slashing_authority: &Pubkey,
     rewards_authority: &Pubkey,
@@ -132,7 +144,7 @@ pub fn update_staking_config_ix(
         [214, 238, 91, 123, 207, 114, 9, 246],
         UpdateStakingConfigParams {
             min_stake_by_role,
-            unbonding_period_secs,
+            unbonding_period_secs_by_role,
             slash_bps,
             slashing_authority: *slashing_authority,
             rewards_authority: *rewards_authority,
@@ -337,7 +349,7 @@ mod tests {
             &mint,
             &slash_destination,
             [1; ROLE_COUNT],
-            604_800,
+            [604_800; ROLE_COUNT],
             1_000,
             &slashing_authority,
             &rewards_authority,
@@ -381,7 +393,7 @@ mod tests {
                     &admin,
                     &mint,
                     [1_000, 5_000, 1_000, 5_000, 1_000, 1_000, 1_000],
-                    604_800,
+                    [604_800; ROLE_COUNT],
                     500,
                     &Pubkey::new_unique(),
                     &Pubkey::new_unique(),
