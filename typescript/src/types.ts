@@ -903,14 +903,21 @@ export type DeliveryStatus =
  * The address is a ciphertext because subscriptions replicate to every
  * node: in plaintext, a wallet's email address or phone number would be
  * readable by every node operator on the network. Only the bound gateway
- * can open it. Constructing one needs the sealing primitive itself, which
- * this SDK does not yet expose — until it does, the only value a client
- * can send is an empty list.
+ * can open it.
+ *
+ * Build one with {@link seal}, addressing the gateway's
+ * `provider_public_key` from its `ServiceRecord`.
+ *
+ * The three fields are `number[]`, not `Uint8Array`, and the distinction is
+ * load-bearing rather than stylistic: `JSON.stringify` renders a
+ * `Uint8Array` as an *object* with numeric keys (`{"0":1,"1":2}`), which
+ * `serde` cannot decode into `[u8; 32]`. Every byte field in this SDK is a
+ * plain array for that reason.
  */
 export interface SealedBox {
-  ephemeral_public: Uint8Array;
-  nonce: Uint8Array;
-  ciphertext: Uint8Array;
+  ephemeral_public: number[];
+  nonce: number[];
+  ciphertext: number[];
 }
 
 export interface SubscriptionDestination {

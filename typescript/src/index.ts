@@ -13,7 +13,14 @@
  */
 export { Client, type ClientConfig, defaultClientConfig } from "./client.js";
 export { ApplicationError, JsonRpcError, TransportError } from "./error.js";
-export { type Keypair, generateKeypair, keypairFromSeed, peerIdFromPublicKey, sign } from "./crypto.js";
+export {
+  type Keypair,
+  generateKeypair,
+  keypairFromSeed,
+  peerIdFromPublicKey,
+  sign,
+} from "./crypto.js";
+export { SealError, seal } from "./seal.js";
 export * from "./types.js";
 export * as advertisements from "./methods/advertisements.js";
 export * as chain from "./methods/chain.js";
