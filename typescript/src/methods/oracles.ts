@@ -1,6 +1,6 @@
 import type { Client } from "../client.js";
 import { type Keypair, sign } from "../crypto.js";
-import { toBytes, type OraclePublish, type OracleRecord, type SignedOraclePublish } from "../types.js";
+import { toBase58, type OraclePublish, type OracleRecord, type SignedOraclePublish } from "../types.js";
 
 export async function getOracleRecord(client: Client, id: string): Promise<OracleRecord | null> {
   return client.call("getOracleRecord", { id });
@@ -31,6 +31,6 @@ export async function sendOraclePublish(
 ): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(publish));
   const signature = await sign(keypair, bytes);
-  const signed: SignedOraclePublish = { publish, signature: toBytes(signature) };
+  const signed: SignedOraclePublish = { publish, signature: toBase58(signature) };
   return client.sendSigned("sendOraclePublish", signed);
 }

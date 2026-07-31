@@ -1,7 +1,7 @@
 import type { Client } from "../client.js";
 import { type Keypair, sign } from "../crypto.js";
 import {
-  toBytes,
+  toBase58,
   type PublicReservation,
   type Reservation,
   type ReservationRequest,
@@ -46,6 +46,6 @@ export async function sendReservationRequest(
 ): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(request));
   const signature = await sign(keypair, bytes);
-  const signed: SignedReservationRequest = { request, signature: toBytes(signature) };
+  const signed: SignedReservationRequest = { request, signature: toBase58(signature) };
   return client.sendSigned("sendReservationRequest", signed);
 }

@@ -1,7 +1,7 @@
 import type { Client } from "../client.js";
 import { type Keypair, sign } from "../crypto.js";
 import {
-  toBytes,
+  toBase58,
   type AdvertisementCreate,
   type AdvertisementPage,
   type AdvertisementQuery,
@@ -102,7 +102,7 @@ export async function sendAdvertisementCreate(
 ): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(create));
   const signature = await sign(keypair, bytes);
-  const signed: SignedAdvertisementCreate = { create, signature: toBytes(signature) };
+  const signed: SignedAdvertisementCreate = { create, signature: toBase58(signature) };
   return client.sendSigned("sendAdvertisementCreate", signed);
 }
 
@@ -115,7 +115,7 @@ export async function sendAdvertisementDisable(
 ): Promise<void> {
   const bytes = new TextEncoder().encode(JSON.stringify(disable));
   const signature = await sign(keypair, bytes);
-  const signed: SignedAdvertisementDisable = { disable, signature: toBytes(signature) };
+  const signed: SignedAdvertisementDisable = { disable, signature: toBase58(signature) };
   return client.sendSigned("sendAdvertisementDisable", signed);
 }
 
@@ -128,6 +128,6 @@ export async function sendAdvertisementPriceUpdate(
 ): Promise<void> {
   const bytes = new TextEncoder().encode(JSON.stringify(update));
   const signature = await sign(keypair, bytes);
-  const signed: SignedAdvertisementPriceUpdate = { update, signature: toBytes(signature) };
+  const signed: SignedAdvertisementPriceUpdate = { update, signature: toBase58(signature) };
   return client.sendSigned("sendAdvertisementPriceUpdate", signed);
 }

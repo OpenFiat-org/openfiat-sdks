@@ -1,5 +1,6 @@
 import * as ed from "@noble/ed25519";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { decodeBase58 } from "../src/base58.js";
 import { Client } from "../src/client.js";
 import { generateKeypair, peerIdFromPublicKey } from "../src/crypto.js";
 import {
@@ -9,7 +10,7 @@ import {
   sendAdvertisementPriceUpdate,
 } from "../src/methods/advertisements.js";
 import {
-  toBytes,
+  toBase58,
   type AdvertisementDisable,
   type AdvertisementPage,
   type AdvertisementPriceUpdate,
@@ -70,7 +71,7 @@ describe("advertisement lifecycle methods", () => {
     const keypair = await generateKeypair();
     const disable: AdvertisementDisable = {
       id: "ad-1",
-      merchant: toBytes(peerIdFromPublicKey(keypair.publicKey)),
+      merchant: toBase58(peerIdFromPublicKey(keypair.publicKey)),
       timestamp: 1_785_326_039_513,
     };
 
@@ -81,7 +82,7 @@ describe("advertisement lifecycle methods", () => {
 
     const payload = decodePayload(onlyCall(calls)) as {
       disable: AdvertisementDisable;
-      signature: number[];
+      signature: string;
     };
     expect(payload.disable).toEqual(disable);
 
@@ -89,7 +90,7 @@ describe("advertisement lifecycle methods", () => {
     const signedBytes = new TextEncoder().encode(JSON.stringify(disable));
     await expect(
       ed.verifyAsync(
-        Uint8Array.from(payload.signature),
+        decodeBase58(payload.signature),
         signedBytes,
         keypair.publicKey,
       ),
@@ -102,18 +103,18 @@ describe("advertisement lifecycle methods", () => {
     const impostor = await generateKeypair();
     const disable: AdvertisementDisable = {
       id: "ad-1",
-      merchant: toBytes(peerIdFromPublicKey(owner.publicKey)),
+      merchant: toBase58(peerIdFromPublicKey(owner.publicKey)),
       timestamp: 1_785_326_039_513,
     };
 
     // The impostor names the real merchant but can only sign with its own key.
     await sendAdvertisementDisable(client, disable, impostor);
 
-    const payload = decodePayload(onlyCall(calls)) as { signature: number[] };
+    const payload = decodePayload(onlyCall(calls)) as { signature: string };
     const signedBytes = new TextEncoder().encode(JSON.stringify(disable));
     await expect(
       ed.verifyAsync(
-        Uint8Array.from(payload.signature),
+        decodeBase58(payload.signature),
         signedBytes,
         owner.publicKey,
       ),
@@ -125,7 +126,7 @@ describe("advertisement lifecycle methods", () => {
     const keypair = await generateKeypair();
     const update: AdvertisementPriceUpdate = {
       id: "ad-1",
-      merchant: toBytes(peerIdFromPublicKey(keypair.publicKey)),
+      merchant: toBase58(peerIdFromPublicKey(keypair.publicKey)),
       pricing: { Fixed: { price: { base_units: 200, decimals: 2 } } },
       timestamp: 1_785_326_039_513,
     };
@@ -137,14 +138,14 @@ describe("advertisement lifecycle methods", () => {
 
     const payload = decodePayload(onlyCall(calls)) as {
       update: AdvertisementPriceUpdate;
-      signature: number[];
+      signature: string;
     };
     expect(payload.update).toEqual(update);
 
     const signedBytes = new TextEncoder().encode(JSON.stringify(update));
     await expect(
       ed.verifyAsync(
-        Uint8Array.from(payload.signature),
+        decodeBase58(payload.signature),
         signedBytes,
         keypair.publicKey,
       ),
@@ -157,18 +158,18 @@ describe("advertisement lifecycle methods", () => {
     const impostor = await generateKeypair();
     const update: AdvertisementPriceUpdate = {
       id: "ad-1",
-      merchant: toBytes(peerIdFromPublicKey(owner.publicKey)),
+      merchant: toBase58(peerIdFromPublicKey(owner.publicKey)),
       pricing: { Fixed: { price: { base_units: 999_00, decimals: 2 } } },
       timestamp: 1_785_326_039_513,
     };
 
     await sendAdvertisementPriceUpdate(client, update, impostor);
 
-    const payload = decodePayload(onlyCall(calls)) as { signature: number[] };
+    const payload = decodePayload(onlyCall(calls)) as { signature: string };
     const signedBytes = new TextEncoder().encode(JSON.stringify(update));
     await expect(
       ed.verifyAsync(
-        Uint8Array.from(payload.signature),
+        decodeBase58(payload.signature),
         signedBytes,
         owner.publicKey,
       ),
@@ -188,7 +189,7 @@ describe("advertisement lifecycle methods", () => {
     const keypair = await generateKeypair();
     const update: AdvertisementPriceUpdate = {
       id: "ad-1",
-      merchant: toBytes(peerIdFromPublicKey(keypair.publicKey)),
+      merchant: toBase58(peerIdFromPublicKey(keypair.publicKey)),
       pricing: {
         Floating: {
           oracle_provider: "any",
@@ -265,8 +266,8 @@ function stubPages(pages: AdvertisementPage[]): {
 function row(id: string): AdvertisementView {
   return {
     id,
-    merchant: [],
-    merchant_public_key: [],
+    merchant: "12D3KooWK9hQ7TwbfvFiaAxUbRFCkdhS7iEpAJDnewNL1anyREQ1",
+    merchant_public_key: "ALLENLMtV1zEAHT3xpVryqcbdPCB8c9JhM1Jdbe5XHg5",
     asset_mint: "2bHPi5hA4zrmPAfrvLmEexg3KJjpTjNkUcxWnzUPeRRU",
     direction: "Sell",
     fiat_currency: "KES",

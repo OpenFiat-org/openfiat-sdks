@@ -1,5 +1,6 @@
 import * as ed from "@noble/ed25519";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { decodeBase58 } from "../src/base58.js";
 import { Client } from "../src/client.js";
 import { generateKeypair, peerIdFromPublicKey } from "../src/crypto.js";
 import {
@@ -8,7 +9,7 @@ import {
   sendProviderHealthUpdate,
   sendProviderWithdraw,
 } from "../src/methods/providers.js";
-import { toBytes, type HealthUpdate, type Withdrawal } from "../src/types.js";
+import { toBase58, type HealthUpdate, type Withdrawal } from "../src/types.js";
 
 /**
  * These two methods are what let a provider prove liveness and leave. A node
@@ -59,7 +60,7 @@ describe("provider lifecycle methods", () => {
     const keypair = await generateKeypair();
     const update: HealthUpdate = {
       service_id: "svc-1",
-      provider: toBytes(peerIdFromPublicKey(keypair.publicKey)),
+      provider: toBase58(peerIdFromPublicKey(keypair.publicKey)),
       state: "Online",
       timestamp: 1_785_326_039_513,
     };
@@ -71,14 +72,14 @@ describe("provider lifecycle methods", () => {
 
     const payload = decodePayload(onlyCall(calls)) as {
       update: HealthUpdate;
-      signature: number[];
+      signature: string;
     };
     expect(payload.update).toEqual(update);
 
     // The node verifies over the JSON of the inner struct, not the envelope.
     const signedBytes = new TextEncoder().encode(JSON.stringify(update));
     await expect(
-      ed.verifyAsync(Uint8Array.from(payload.signature), signedBytes, keypair.publicKey),
+      ed.verifyAsync(decodeBase58(payload.signature), signedBytes, keypair.publicKey),
     ).resolves.toBe(true);
   });
 
@@ -87,7 +88,7 @@ describe("provider lifecycle methods", () => {
     const keypair = await generateKeypair();
     const withdrawal: Withdrawal = {
       service_id: "svc-1",
-      provider: toBytes(peerIdFromPublicKey(keypair.publicKey)),
+      provider: toBase58(peerIdFromPublicKey(keypair.publicKey)),
       timestamp: 1_785_326_039_513,
     };
 
@@ -98,13 +99,13 @@ describe("provider lifecycle methods", () => {
 
     const payload = decodePayload(onlyCall(calls)) as {
       withdrawal: Withdrawal;
-      signature: number[];
+      signature: string;
     };
     expect(payload.withdrawal).toEqual(withdrawal);
 
     const signedBytes = new TextEncoder().encode(JSON.stringify(withdrawal));
     await expect(
-      ed.verifyAsync(Uint8Array.from(payload.signature), signedBytes, keypair.publicKey),
+      ed.verifyAsync(decodeBase58(payload.signature), signedBytes, keypair.publicKey),
     ).resolves.toBe(true);
   });
 
@@ -114,17 +115,17 @@ describe("provider lifecycle methods", () => {
     const impostor = await generateKeypair();
     const withdrawal: Withdrawal = {
       service_id: "svc-1",
-      provider: toBytes(peerIdFromPublicKey(owner.publicKey)),
+      provider: toBase58(peerIdFromPublicKey(owner.publicKey)),
       timestamp: 1_785_326_039_513,
     };
 
     // The impostor names the real provider but can only sign with its own key.
     await sendProviderWithdraw(client, withdrawal, impostor);
 
-    const payload = decodePayload(onlyCall(calls)) as { signature: number[] };
+    const payload = decodePayload(onlyCall(calls)) as { signature: string };
     const signedBytes = new TextEncoder().encode(JSON.stringify(withdrawal));
     await expect(
-      ed.verifyAsync(Uint8Array.from(payload.signature), signedBytes, owner.publicKey),
+      ed.verifyAsync(decodeBase58(payload.signature), signedBytes, owner.publicKey),
     ).resolves.toBe(false);
   });
 });

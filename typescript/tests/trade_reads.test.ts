@@ -16,6 +16,7 @@
  */
 import * as ed from "@noble/ed25519";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { encodeBase58 } from "../src/base58.js";
 import { Client } from "../src/client.js";
 import { generateKeypair, peerIdFromPublicKey, type Keypair } from "../src/crypto.js";
 import { getMyDisputes } from "../src/methods/disputes.js";
@@ -180,7 +181,9 @@ describe("the wallet-proof trade reads", () => {
  * against the node's own answer for a real trade.
  */
 describe("the trade status a party has to derive for themselves", () => {
-  const zeros = new Array<number>(32).fill(0);
+  // A party identifier as the node writes it: base58, not an array of
+  // integers. These reads redact the real parties anyway.
+  const zeros = encodeBase58(new Uint8Array(32));
 
   const reservation = (state: ReservationState): Reservation => ({
     id: "r-1",

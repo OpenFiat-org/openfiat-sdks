@@ -19,8 +19,8 @@ impl Client {
         self.call("getLatestSnapshot", ()).await
     }
 
-    pub async fn get_checkpoint_height(&self) -> Result<Option<u64>> {
-        self.call("getCheckpointHeight", ()).await
+    pub async fn get_checkpoint_slot(&self) -> Result<Option<u64>> {
+        self.call("getCheckpointSlot", ()).await
     }
 
     pub async fn send_snapshot_announce(

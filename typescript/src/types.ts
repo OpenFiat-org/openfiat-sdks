@@ -1,3 +1,4 @@
+import { encodeBase58 } from "./base58.js";
 /**
  * Wire shapes for the domains this SDK has typed bindings for so far
  * (node, oracles, service providers). Field names are deliberately
@@ -18,12 +19,24 @@
  * `bigint` with a custom JSON reviver.
  */
 
-/** A 64-byte Ed25519 signature, as the JSON number array `serde` produces. */
-export type SignatureBytes = number[];
-/** A 32-byte Ed25519 public key, as the JSON number array `serde` produces. */
-export type PublicKeyBytes = number[];
-/** A libp2p PeerId, as the JSON number array `serde` produces — see `peerIdFromPublicKey`. */
-export type PeerIdBytes = number[];
+/**
+ * A 64-byte Ed25519 signature, base58-encoded.
+ *
+ * These three were `number[]` until a node started rendering them as
+ * base58. That was not only a display change: an array of 32 integers is
+ * shaped exactly like an Ed25519 *private* key, so a reader could not tell
+ * a published public key from a leaked secret, and a peer id in that form
+ * could not be pasted into an `--entrypoint`.
+ *
+ * Build them with {@link toBase58}. Writing one as an array of numbers
+ * produces a payload whose transcript the node will not reproduce, so the
+ * signature fails to verify rather than failing to parse.
+ */
+export type Base58Signature = string;
+/** A 32-byte Ed25519 public key, base58-encoded. See {@link Base58Signature}. */
+export type Base58PublicKey = string;
+/** A libp2p PeerId in its `12D3Koo…` form. See {@link Base58Signature}. */
+export type Base58PeerId = string;
 /** Milliseconds since the Unix epoch — `openfiat_types::Timestamp`'s JSON shape (a bare number). */
 export type TimestampMs = number;
 
@@ -32,8 +45,13 @@ export interface Amount {
   decimals: number;
 }
 
-export function toBytes(arr: Uint8Array): number[] {
-  return Array.from(arr);
+/**
+ * Encode a key, peer id or signature for a payload field. Re-exported
+ * here because every call site that used the old `toBytes` needs exactly
+ * this instead.
+ */
+export function toBase58(bytes: Uint8Array): string {
+  return encodeBase58(bytes);
 }
 
 // --- Node ---
@@ -88,8 +106,8 @@ export type OracleData =
 
 export interface OraclePublish {
   id: string;
-  provider: PeerIdBytes;
-  provider_public_key: PublicKeyBytes;
+  provider: Base58PeerId;
+  provider_public_key: Base58PublicKey;
   data: OracleData;
   version: number;
   timestamp: TimestampMs;
@@ -98,13 +116,13 @@ export interface OraclePublish {
 
 export interface SignedOraclePublish {
   publish: OraclePublish;
-  signature: SignatureBytes;
+  signature: Base58Signature;
 }
 
 export interface OracleRecord {
   id: string;
-  provider: PeerIdBytes;
-  provider_public_key: PublicKeyBytes;
+  provider: Base58PeerId;
+  provider_public_key: Base58PublicKey;
   data: OracleData;
   version: number;
   published_at: TimestampMs;
@@ -142,8 +160,8 @@ export interface ServicePricing {
 export interface Registration {
   service_id: string;
   service_type: ServiceType;
-  provider: PeerIdBytes;
-  provider_public_key: PublicKeyBytes;
+  provider: Base58PeerId;
+  provider_public_key: Base58PublicKey;
   endpoints: string[];
   supported_ofs: number[];
   region: string | null;
@@ -157,7 +175,7 @@ export interface Registration {
 
 export interface SignedRegistration {
   registration: Registration;
-  signature: SignatureBytes;
+  signature: Base58Signature;
 }
 
 export type HealthState = "Online" | "Maintenance" | "Degraded" | "Offline";
@@ -168,33 +186,33 @@ export type HealthState = "Online" | "Maintenance" | "Degraded" | "Offline";
  */
 export interface HealthUpdate {
   service_id: string;
-  provider: PeerIdBytes;
+  provider: Base58PeerId;
   state: HealthState;
   timestamp: TimestampMs;
 }
 
 export interface SignedHealthUpdate {
   update: HealthUpdate;
-  signature: SignatureBytes;
+  signature: Base58Signature;
 }
 
 /** OFS-1500 §17. Verified the same way as a health update. */
 export interface Withdrawal {
   service_id: string;
-  provider: PeerIdBytes;
+  provider: Base58PeerId;
   timestamp: TimestampMs;
 }
 
 export interface SignedWithdrawal {
   withdrawal: Withdrawal;
-  signature: SignatureBytes;
+  signature: Base58Signature;
 }
 
 export interface ServiceRecord {
   service_id: string;
   service_type: ServiceType;
-  provider: PeerIdBytes;
-  provider_public_key: PublicKeyBytes;
+  provider: Base58PeerId;
+  provider_public_key: Base58PublicKey;
   endpoints: string[];
   supported_ofs: number[];
   region: string | null;
@@ -283,8 +301,8 @@ export type AdvertisementStatus =
 
 export interface AdvertisementCreate {
   id: string;
-  merchant: PeerIdBytes;
-  merchant_public_key: PublicKeyBytes;
+  merchant: Base58PeerId;
+  merchant_public_key: Base58PublicKey;
   /** The mint the buyer is paid in — see {@link MintAddress}. There is no
    *  companion symbol field, and that absence is deliberate: the name a
    *  buyer reads is resolved from this by the node, never supplied here. */
@@ -301,42 +319,42 @@ export interface AdvertisementCreate {
 
 export interface SignedAdvertisementCreate {
   create: AdvertisementCreate;
-  signature: SignatureBytes;
+  signature: Base58Signature;
 }
 
 /** §18/§21: a merchant taking their own ad down — the only lifecycle
  *  transition besides creation and repricing a merchant can trigger. */
 export interface AdvertisementDisable {
   id: string;
-  merchant: PeerIdBytes;
+  merchant: Base58PeerId;
   timestamp: TimestampMs;
 }
 
 export interface SignedAdvertisementDisable {
   disable: AdvertisementDisable;
-  signature: SignatureBytes;
+  signature: Base58Signature;
 }
 
 /** §17's "Price changes" refresh trigger: repricing an existing ad in
  *  place instead of disabling and recreating it. */
 export interface AdvertisementPriceUpdate {
   id: string;
-  merchant: PeerIdBytes;
+  merchant: Base58PeerId;
   pricing: PricingModel;
   timestamp: TimestampMs;
 }
 
 export interface SignedAdvertisementPriceUpdate {
   update: AdvertisementPriceUpdate;
-  signature: SignatureBytes;
+  signature: Base58Signature;
 }
 
 /** The replicated advertisement record, exactly as it is signed, gossiped
  *  and stored. What a *reader* gets back is {@link AdvertisementView}. */
 export interface Advertisement {
   id: string;
-  merchant: PeerIdBytes;
-  merchant_public_key: PublicKeyBytes;
+  merchant: Base58PeerId;
+  merchant_public_key: Base58PublicKey;
   /** The mint the buyer is paid in — see {@link MintAddress}. */
   asset_mint: MintAddress;
   direction: Direction;
@@ -549,8 +567,8 @@ export type ReservationState = "EscrowLocked" | "Cancelled" | "Expired";
 export interface ReservationRequest {
   id: string;
   advertisement_id: string;
-  requester: PeerIdBytes;
-  requester_public_key: PublicKeyBytes;
+  requester: Base58PeerId;
+  requester_public_key: Base58PublicKey;
   amount: Amount;
   /**
    * Fiat per unit of asset, as the requester understood it when they
@@ -582,7 +600,7 @@ export interface ReservationRequest {
 
 export interface SignedReservationRequest {
   request: ReservationRequest;
-  signature: SignatureBytes;
+  signature: Base58Signature;
 }
 
 /**
@@ -595,8 +613,8 @@ export interface SignedReservationRequest {
 export interface Reservation {
   id: string;
   advertisement_id: string;
-  requester: PeerIdBytes;
-  requester_public_key: PublicKeyBytes;
+  requester: Base58PeerId;
+  requester_public_key: Base58PublicKey;
   amount: Amount;
   /** The price this reservation was made at. The advertisement's own quote
    *  moves with the oracle and is only ever a display; once a reservation
@@ -665,10 +683,10 @@ export type PaymentDiscrepancy =
 export interface Settlement {
   id: string;
   reservation_id: string;
-  buyer: PeerIdBytes;
-  buyer_public_key: PublicKeyBytes;
-  seller: PeerIdBytes;
-  seller_public_key: PublicKeyBytes;
+  buyer: Base58PeerId;
+  buyer_public_key: Base58PublicKey;
+  seller: Base58PeerId;
+  seller_public_key: Base58PublicKey;
   amount: Amount;
   state: SettlementState;
   /** Free text the buyer puts their own bank reference in. */
@@ -778,13 +796,13 @@ export type Resolution =
 export type Vote = "BuyerWins" | "MerchantWins" | "Invalid";
 
 export interface ArbitratorCommitment {
-  arbitrator: PeerIdBytes;
+  arbitrator: Base58PeerId;
   /** The 32-byte commitment hash, as the JSON number array `serde` produces. */
   commitment: number[];
 }
 
 export interface ArbitratorReveal {
-  arbitrator: PeerIdBytes;
+  arbitrator: Base58PeerId;
   vote: Vote;
 }
 
@@ -796,17 +814,17 @@ export interface ArbitratorReveal {
 export interface Dispute {
   id: string;
   settlement_id: string;
-  buyer: PeerIdBytes;
-  buyer_public_key: PublicKeyBytes;
-  seller: PeerIdBytes;
-  seller_public_key: PublicKeyBytes;
-  opener: PeerIdBytes;
+  buyer: Base58PeerId;
+  buyer_public_key: Base58PublicKey;
+  seller: Base58PeerId;
+  seller_public_key: Base58PublicKey;
+  opener: Base58PeerId;
   /** Free text written by whoever opened the case. */
   reason: string;
   status: DisputeStatus;
   required_arbitrators: number;
-  arbitrators: PeerIdBytes[];
-  arbitrator_keys: [PeerIdBytes, PublicKeyBytes][];
+  arbitrators: Base58PeerId[];
+  arbitrator_keys: [Base58PeerId, Base58PublicKey][];
   commitments: ArbitratorCommitment[];
   reveals: ArbitratorReveal[];
   resolution: Resolution | null;
@@ -935,8 +953,8 @@ export interface SubscriptionDestination {
  * which fails as `INVALID_SIGNATURE` rather than as a missing field.
  */
 export interface SubscriptionUpdate {
-  wallet: PeerIdBytes;
-  wallet_public_key: PublicKeyBytes;
+  wallet: Base58PeerId;
+  wallet_public_key: Base58PublicKey;
   enabled_categories: NotificationCategory[];
   destinations: SubscriptionDestination[];
   timestamp: TimestampMs;
@@ -944,12 +962,12 @@ export interface SubscriptionUpdate {
 
 export interface SignedSubscriptionUpdate {
   update: SubscriptionUpdate;
-  signature: SignatureBytes;
+  signature: Base58Signature;
 }
 
 export interface Subscription {
-  wallet: PeerIdBytes;
-  wallet_public_key: PublicKeyBytes;
+  wallet: Base58PeerId;
+  wallet_public_key: Base58PublicKey;
   enabled_categories: NotificationCategory[];
   updated_at: TimestampMs;
 }
@@ -957,9 +975,9 @@ export interface Subscription {
 export interface DeliveryReport {
   notification_id: string;
   service_id: string;
-  provider: PeerIdBytes;
-  provider_public_key: PublicKeyBytes;
-  recipient_wallet: PeerIdBytes;
+  provider: Base58PeerId;
+  provider_public_key: Base58PublicKey;
+  recipient_wallet: Base58PeerId;
   trigger: NotificationTrigger;
   status: DeliveryStatus;
   timestamp: TimestampMs;
@@ -967,13 +985,13 @@ export interface DeliveryReport {
 
 export interface SignedDeliveryReport {
   report: DeliveryReport;
-  signature: SignatureBytes;
+  signature: Base58Signature;
 }
 
 export interface DeliveryReceipt {
   notification_id: string;
   service_id: string;
-  recipient_wallet: PeerIdBytes;
+  recipient_wallet: Base58PeerId;
   trigger: NotificationTrigger;
   status: DeliveryStatus;
   updated_at: TimestampMs;

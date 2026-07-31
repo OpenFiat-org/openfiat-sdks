@@ -42,7 +42,6 @@ import {
   RENT_SYSVAR_ID,
   Role,
   SLOT_HASHES_SYSVAR_ID,
-  TOKEN_2022_PROGRAM_ID,
 } from "./constants.js";
 import type { DisputeOutcome } from "./constants.js";
 import { stakeAccountPda, stakingConfigPda } from "./staking.js";

@@ -22,7 +22,7 @@ import {
   reservations,
   settlement,
   sign,
-  toBytes,
+  toBase58,
   trade,
   wallet as walletAuth,
   type AdvertisementCreate,
@@ -67,8 +67,8 @@ describe.skipIf(!endpoint)("against a real node", () => {
     const registration: Registration = {
       service_id: "vitest-oracle-1",
       service_type: { MarketData: "FxOracle" },
-      provider: toBytes(peerId),
-      provider_public_key: toBytes(keypair.publicKey),
+      provider: toBase58(peerId),
+      provider_public_key: toBase58(keypair.publicKey),
       endpoints: ["/ip4/127.0.0.1/udp/4001/quic-v1"],
       supported_ofs: [1500, 7000],
       region: "Kenya",
@@ -81,13 +81,13 @@ describe.skipIf(!endpoint)("against a real node", () => {
     expect(serviceId).toBe("vitest-oracle-1");
 
     const record = await providers.getProvider(client, serviceId);
-    expect(record?.provider_public_key).toEqual(toBytes(keypair.publicKey));
+    expect(record?.provider_public_key).toEqual(toBase58(keypair.publicKey));
 
     const now = Date.now();
     const publish: OraclePublish = {
       id: "vitest-usdc-kes",
-      provider: toBytes(peerId),
-      provider_public_key: toBytes(keypair.publicKey),
+      provider: toBase58(peerId),
+      provider_public_key: toBase58(keypair.publicKey),
       data: { ExchangeRate: { base: "USDC", quote: "KES", rate: 129.52 } },
       version: 1,
       timestamp: now,
@@ -140,8 +140,8 @@ describe.skipIf(!endpoint)("against a real node", () => {
 
     const create: AdvertisementCreate = {
       id: "vitest-trading-bot-ad",
-      merchant: toBytes(peerIdFromPublicKey(merchant.publicKey)),
-      merchant_public_key: toBytes(merchant.publicKey),
+      merchant: toBase58(peerIdFromPublicKey(merchant.publicKey)),
+      merchant_public_key: toBase58(merchant.publicKey),
       asset_mint: USDT_MINT,
       direction: "Sell",
       fiat_currency: "KES",
@@ -158,8 +158,8 @@ describe.skipIf(!endpoint)("against a real node", () => {
     const request: ReservationRequest = {
       id: "vitest-trading-bot-reservation",
       advertisement_id: adId,
-      requester: toBytes(peerIdFromPublicKey(bot.publicKey)),
-      requester_public_key: toBytes(bot.publicKey),
+      requester: toBase58(peerIdFromPublicKey(bot.publicKey)),
+      requester_public_key: toBase58(bot.publicKey),
       amount: { base_units: 5_000, decimals: 2 },
       // The advertised fixed price, exactly. A reservation records the
       // number the taker agreed to, and the node refuses one that does not
@@ -185,12 +185,12 @@ describe.skipIf(!endpoint)("against a real node", () => {
   // agrees with anything.
   it("names an advertisement's asset by mint and reads the symbol back from the node", async () => {
     const merchant = await generateKeypair();
-    const merchantId = toBytes(peerIdFromPublicKey(merchant.publicKey));
+    const merchantId = toBase58(peerIdFromPublicKey(merchant.publicKey));
 
     const create = (id: string, mint: string): AdvertisementCreate => ({
       id,
       merchant: merchantId,
-      merchant_public_key: toBytes(merchant.publicKey),
+      merchant_public_key: toBase58(merchant.publicKey),
       asset_mint: mint,
       direction: "Sell",
       fiat_currency: "KES",
@@ -244,12 +244,12 @@ describe.skipIf(!endpoint)("against a real node", () => {
   it("redacts the public reservation read and answers the requester's own in full", async () => {
     const merchant = await generateKeypair();
     const bot = await generateKeypair();
-    const botId = toBytes(peerIdFromPublicKey(bot.publicKey));
+    const botId = toBase58(peerIdFromPublicKey(bot.publicKey));
 
     const create: AdvertisementCreate = {
       id: "vitest-redaction-ad",
-      merchant: toBytes(peerIdFromPublicKey(merchant.publicKey)),
-      merchant_public_key: toBytes(merchant.publicKey),
+      merchant: toBase58(peerIdFromPublicKey(merchant.publicKey)),
+      merchant_public_key: toBase58(merchant.publicKey),
       asset_mint: USDT_MINT,
       direction: "Sell",
       fiat_currency: "KES",
@@ -266,7 +266,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
       id: "vitest-redaction-reservation",
       advertisement_id: adId,
       requester: botId,
-      requester_public_key: toBytes(bot.publicKey),
+      requester_public_key: toBase58(bot.publicKey),
       amount: { base_units: 5_000, decimals: 2 },
       // The advertised fixed price, exactly. A reservation records the
       // number the taker agreed to, and the node refuses one that does not
@@ -306,14 +306,14 @@ describe.skipIf(!endpoint)("against a real node", () => {
   it("redacts the trade join and answers the requester's own trades in full", async () => {
     const merchant = await generateKeypair();
     const bot = await generateKeypair();
-    const botId = toBytes(peerIdFromPublicKey(bot.publicKey));
+    const botId = toBase58(peerIdFromPublicKey(bot.publicKey));
 
     const adId = await advertisements.sendAdvertisementCreate(
       client,
       {
         id: "vitest-trade-redaction-ad",
-        merchant: toBytes(peerIdFromPublicKey(merchant.publicKey)),
-        merchant_public_key: toBytes(merchant.publicKey),
+        merchant: toBase58(peerIdFromPublicKey(merchant.publicKey)),
+        merchant_public_key: toBase58(merchant.publicKey),
         asset_mint: USDT_MINT,
         direction: "Sell",
         fiat_currency: "KES",
@@ -332,7 +332,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
         id: "vitest-trade-redaction-reservation",
         advertisement_id: adId,
         requester: botId,
-        requester_public_key: toBytes(bot.publicKey),
+        requester_public_key: toBase58(bot.publicKey),
         amount: { base_units: 5_000, decimals: 2 },
         agreed_price: { base_units: 12_950, decimals: 2 },
         agreed_mid: null,
@@ -388,7 +388,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
   // matching row exactly once.
   it("narrows and pages the order book on the node", async () => {
     const merchant = await generateKeypair();
-    const merchantId = toBytes(peerIdFromPublicKey(merchant.publicKey));
+    const merchantId = toBase58(peerIdFromPublicKey(merchant.publicKey));
     // A currency no other test in this file publishes against, so the
     // assertions below are about these three advertisements and not about
     // whatever else this shared node happens to be holding.
@@ -401,7 +401,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
         {
           id,
           merchant: merchantId,
-          merchant_public_key: toBytes(merchant.publicKey),
+          merchant_public_key: toBase58(merchant.publicKey),
           asset_mint: USDT_MINT,
           direction: "Sell",
           fiat_currency: currency,
@@ -499,12 +499,12 @@ describe.skipIf(!endpoint)("against a real node", () => {
   // structurally cannot cover.
   it("reprices and then retires a published advertisement", async () => {
     const merchant = await generateKeypair();
-    const merchantId = toBytes(peerIdFromPublicKey(merchant.publicKey));
+    const merchantId = toBase58(peerIdFromPublicKey(merchant.publicKey));
 
     const create: AdvertisementCreate = {
       id: "vitest-lifecycle-ad",
       merchant: merchantId,
-      merchant_public_key: toBytes(merchant.publicKey),
+      merchant_public_key: toBase58(merchant.publicKey),
       asset_mint: USDT_MINT,
       direction: "Sell",
       fiat_currency: "KES",
@@ -570,8 +570,8 @@ describe.skipIf(!endpoint)("against a real node", () => {
       {
         service_id: serviceId,
         service_type: { Notifications: "Webhook" },
-        provider: toBytes(providerId),
-        provider_public_key: toBytes(provider.publicKey),
+        provider: toBase58(providerId),
+        provider_public_key: toBase58(provider.publicKey),
         // Loopback, not `example.invalid`. A node now refuses to register
         // an endpoint in an RFC 2606/6761 reserved domain at all: a signed
         // registration replicates to every node and is offered to users as
@@ -591,8 +591,8 @@ describe.skipIf(!endpoint)("against a real node", () => {
     );
 
     const update: SubscriptionUpdate = {
-      wallet: toBytes(walletId),
-      wallet_public_key: toBytes(wallet.publicKey),
+      wallet: toBase58(walletId),
+      wallet_public_key: toBase58(wallet.publicKey),
       enabled_categories: ["Trading"],
       // Empty, but present. The node verifies the signature against a
       // re-serialization of this struct, so omitting the field makes the
@@ -616,9 +616,9 @@ describe.skipIf(!endpoint)("against a real node", () => {
     const report: DeliveryReport = {
       notification_id: "vitest-notification-1",
       service_id: serviceId,
-      provider: toBytes(providerId),
-      provider_public_key: toBytes(provider.publicKey),
-      recipient_wallet: toBytes(walletId),
+      provider: toBase58(providerId),
+      provider_public_key: toBase58(provider.publicKey),
+      recipient_wallet: toBase58(walletId),
       trigger: "TradeCompleted",
       status: "Delivered",
       timestamp: Date.now(),
