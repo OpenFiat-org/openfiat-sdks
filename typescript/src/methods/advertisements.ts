@@ -6,11 +6,13 @@ import {
   type AdvertisementPage,
   type AdvertisementQuery,
   type AdvertisementView,
-  type AdvertisementDisable,
   type AdvertisementPriceUpdate,
+  type AdvertisementStatusSet,
+  type AdvertisementTermsUpdate,
   type SignedAdvertisementCreate,
-  type SignedAdvertisementDisable,
   type SignedAdvertisementPriceUpdate,
+  type SignedAdvertisementStatusSet,
+  type SignedAdvertisementTermsUpdate,
 } from "../types.js";
 
 /**
@@ -106,17 +108,34 @@ export async function sendAdvertisementCreate(
   return client.sendSigned("sendAdvertisementCreate", signed);
 }
 
-/** Signs `disable` with `keypair` and submits it. Only a signature from the
- *  ad's original merchant key will be accepted — see `AdvertisementDisable`. */
-export async function sendAdvertisementDisable(
+/** Signs `set` with `keypair` and submits it — pausing an advertisement,
+ *  taking it down, deleting it, or putting it back up. Only a signature
+ *  from the ad's original merchant key is accepted.
+ *
+ *  Replaced `sendAdvertisementDisable`, which could only reach one of the
+ *  four states — see {@link AdvertisementStatusSet}. */
+export async function sendAdvertisementStatusSet(
   client: Client,
-  disable: AdvertisementDisable,
+  set: AdvertisementStatusSet,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(disable));
+  const bytes = new TextEncoder().encode(JSON.stringify(set));
   const signature = await sign(keypair, bytes);
-  const signed: SignedAdvertisementDisable = { disable, signature: toBase58(signature) };
-  return client.sendSigned("sendAdvertisementDisable", signed);
+  const signed: SignedAdvertisementStatusSet = { set, signature: toBase58(signature) };
+  return client.sendSigned("sendAdvertisementStatusSet", signed);
+}
+
+/** Signs `update` with `keypair` and submits it — changing trade limits
+ *  and payment methods while the advertisement keeps its id. */
+export async function sendAdvertisementTermsUpdate(
+  client: Client,
+  update: AdvertisementTermsUpdate,
+  keypair: Keypair,
+): Promise<void> {
+  const bytes = new TextEncoder().encode(JSON.stringify(update));
+  const signature = await sign(keypair, bytes);
+  const signed: SignedAdvertisementTermsUpdate = { update, signature: toBase58(signature) };
+  return client.sendSigned("sendAdvertisementTermsUpdate", signed);
 }
 
 /** Signs `update` with `keypair` and submits it — repricing an existing ad

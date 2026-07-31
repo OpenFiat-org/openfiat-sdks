@@ -6,12 +6,14 @@ import { generateKeypair, peerIdFromPublicKey } from "../src/crypto.js";
 import {
   eachAdvertisement,
   getAdvertisements,
-  sendAdvertisementDisable,
+  sendAdvertisementStatusSet,
+  sendAdvertisementTermsUpdate,
   sendAdvertisementPriceUpdate,
 } from "../src/methods/advertisements.js";
 import {
   toBase58,
-  type AdvertisementDisable,
+  type AdvertisementStatusSet,
+  type AdvertisementTermsUpdate,
   type AdvertisementPage,
   type AdvertisementPriceUpdate,
   type AdvertisementView,
@@ -66,28 +68,29 @@ afterEach(() => {
 });
 
 describe("advertisement lifecycle methods", () => {
-  it("sends a disable whose signature verifies over the disable JSON", async () => {
+  it("sends a status set whose signature verifies over its JSON", async () => {
     const { calls, client } = stubTransport();
     const keypair = await generateKeypair();
-    const disable: AdvertisementDisable = {
+    const set: AdvertisementStatusSet = {
       id: "ad-1",
       merchant: toBase58(peerIdFromPublicKey(keypair.publicKey)),
+      status: "Vacation",
       timestamp: 1_785_326_039_513,
     };
 
-    await sendAdvertisementDisable(client, disable, keypair);
+    await sendAdvertisementStatusSet(client, set, keypair);
 
     expect(calls).toHaveLength(1);
-    expect(onlyCall(calls).method).toBe("sendAdvertisementDisable");
+    expect(onlyCall(calls).method).toBe("sendAdvertisementStatusSet");
 
     const payload = decodePayload(onlyCall(calls)) as {
-      disable: AdvertisementDisable;
+      set: AdvertisementStatusSet;
       signature: string;
     };
-    expect(payload.disable).toEqual(disable);
+    expect(payload.set).toEqual(set);
 
     // The node verifies over the JSON of the inner struct, not the envelope.
-    const signedBytes = new TextEncoder().encode(JSON.stringify(disable));
+    const signedBytes = new TextEncoder().encode(JSON.stringify(set));
     await expect(
       ed.verifyAsync(
         decodeBase58(payload.signature),
@@ -97,21 +100,22 @@ describe("advertisement lifecycle methods", () => {
     ).resolves.toBe(true);
   });
 
-  it("signs a disable with the caller's key, so another merchant's signature will not verify", async () => {
+  it("signs a status set with the caller's key, so another merchant's signature will not verify", async () => {
     const { calls, client } = stubTransport();
     const owner = await generateKeypair();
     const impostor = await generateKeypair();
-    const disable: AdvertisementDisable = {
+    const set: AdvertisementStatusSet = {
       id: "ad-1",
       merchant: toBase58(peerIdFromPublicKey(owner.publicKey)),
+      status: "Deleted",
       timestamp: 1_785_326_039_513,
     };
 
     // The impostor names the real merchant but can only sign with its own key.
-    await sendAdvertisementDisable(client, disable, impostor);
+    await sendAdvertisementStatusSet(client, set, impostor);
 
     const payload = decodePayload(onlyCall(calls)) as { signature: string };
-    const signedBytes = new TextEncoder().encode(JSON.stringify(disable));
+    const signedBytes = new TextEncoder().encode(JSON.stringify(set));
     await expect(
       ed.verifyAsync(
         decodeBase58(payload.signature),
@@ -474,5 +478,38 @@ describe("the price quote a node attaches to every advertisement", () => {
     // The type is what stops a caller reading `price` off this at all:
     // narrowing is required before the field exists.
     expect("price" in quote).toBe(false);
+  });
+
+  it("sends a terms update whose payment methods survive the round trip in order", async () => {
+    // Order matters: the merchant signed a specific array, and a builder
+    // that sorted or deduplicated it would change what the node verifies.
+    const { calls, client } = stubTransport();
+    const keypair = await generateKeypair();
+    const update: AdvertisementTermsUpdate = {
+      id: "ad-1",
+      merchant: toBase58(peerIdFromPublicKey(keypair.publicKey)),
+      min_trade: { base_units: 5_000_000, decimals: 6 },
+      max_trade: { base_units: 500_000_000, decimals: 6 },
+      payment_methods: ["M-Pesa", "Bank Transfer"],
+      timestamp: 1_785_326_039_513,
+    };
+
+    await sendAdvertisementTermsUpdate(client, update, keypair);
+
+    expect(onlyCall(calls).method).toBe("sendAdvertisementTermsUpdate");
+    const payload = decodePayload(onlyCall(calls)) as {
+      update: AdvertisementTermsUpdate;
+      signature: string;
+    };
+    expect(payload.update).toEqual(update);
+
+    const signedBytes = new TextEncoder().encode(JSON.stringify(update));
+    await expect(
+      ed.verifyAsync(
+        decodeBase58(payload.signature),
+        signedBytes,
+        keypair.publicKey,
+      ),
+    ).resolves.toBe(true);
   });
 });

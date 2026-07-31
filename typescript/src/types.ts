@@ -324,14 +324,49 @@ export interface SignedAdvertisementCreate {
 
 /** §18/§21: a merchant taking their own ad down — the only lifecycle
  *  transition besides creation and repricing a merchant can trigger. */
-export interface AdvertisementDisable {
+/** §16/§18/§21: a merchant moving their advertisement between the states
+ *  in {@link AdvertisementStatus} — pausing it, taking it down, deleting
+ *  it, or putting it back up.
+ *
+ *  This replaced an `AdvertisementDisable` that could only reach one of
+ *  the four. An advertisement automatically disabled when its liquidity
+ *  ran out could never be reactivated, however much liquidity the
+ *  merchant added afterwards.
+ *
+ *  Two rules the node enforces: `Deleted` is permanent, and an
+ *  advertisement with no liquidity cannot be set `Active`, since the next
+ *  reservation would disable it again. */
+export interface AdvertisementStatusSet {
   id: string;
   merchant: Base58PeerId;
+  status: AdvertisementStatus;
   timestamp: TimestampMs;
 }
 
-export interface SignedAdvertisementDisable {
-  disable: AdvertisementDisable;
+export interface SignedAdvertisementStatusSet {
+  set: AdvertisementStatusSet;
+  signature: Base58Signature;
+}
+
+/** §6: trade limits and payment methods, changed in place.
+ *
+ *  Every field is the new value in full, never a delta — a partial update
+ *  would make "unchanged" and "cleared" identical for `payment_methods`.
+ *  The advertisement keeps its id, which is the point: republishing under
+ *  a new one orphans every reservation, settlement and review that named
+ *  the old. */
+export interface AdvertisementTermsUpdate {
+  id: string;
+  merchant: Base58PeerId;
+  /** Denominated in the asset, like the record's own limits. */
+  min_trade: Amount;
+  max_trade: Amount;
+  payment_methods: string[];
+  timestamp: TimestampMs;
+}
+
+export interface SignedAdvertisementTermsUpdate {
+  update: AdvertisementTermsUpdate;
   signature: Base58Signature;
 }
 

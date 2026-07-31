@@ -36,8 +36,9 @@
 use crate::client::{Client, IdParams};
 use crate::error::Result;
 use openfiat_advertisements::events::{
-    AdvertisementCreate, AdvertisementDisable, AdvertisementPriceUpdate, SignedAdvertisementCreate,
-    SignedAdvertisementDisable, SignedAdvertisementPriceUpdate,
+    AdvertisementCreate, AdvertisementPriceUpdate, AdvertisementStatusSet,
+    AdvertisementTermsUpdate, SignedAdvertisementCreate, SignedAdvertisementPriceUpdate,
+    SignedAdvertisementStatusSet, SignedAdvertisementTermsUpdate,
 };
 use openfiat_advertisements::pricing::PriceQuote;
 use openfiat_advertisements::{Advertisement, AdvertisementId, AdvertisementStatus, Direction};
@@ -201,8 +202,11 @@ impl Client {
     /// let mut query = AdvertisementQuery::default();
     /// loop {
     ///     let page = client.get_advertisements(&query).await?;
-    ///     for advertisement in &page.advertisements {
-    ///         println!("{}", advertisement.id.as_str());
+    ///     for view in &page.advertisements {
+    ///         // `AdvertisementView` flattens the record on the wire but
+    ///         // not in Rust — the row is `view.advertisement`, with the
+    ///         // node's resolved symbol and quote beside it.
+    ///         println!("{}", view.advertisement.id.as_str());
     ///     }
     ///     match page.next_cursor {
     ///         // Verbatim. Deriving a resume point from the last row
@@ -234,16 +238,38 @@ impl Client {
         Ok(AdvertisementId::new(id))
     }
 
-    /// Signs `disable` with `keypair` and submits it. Only a signature from
-    /// the ad's original merchant key will be accepted — see
-    /// `AdvertisementDisable`.
-    pub async fn send_advertisement_disable(
+    /// Signs `set` with `keypair` and submits it — pausing an
+    /// advertisement for a holiday, taking it down, deleting it, or
+    /// putting it back up. Only a signature from the ad's original
+    /// merchant key is accepted.
+    ///
+    /// This replaced `send_advertisement_disable`, which could only reach
+    /// one of those four states: an advertisement automatically disabled
+    /// when its liquidity ran out could never be reactivated.
+    pub async fn send_advertisement_status_set(
         &self,
-        disable: AdvertisementDisable,
+        set: AdvertisementStatusSet,
         keypair: &Keypair,
     ) -> Result<()> {
-        let signed = SignedAdvertisementDisable::sign(disable, keypair);
-        self.send_signed("sendAdvertisementDisable", &signed).await
+        let signed = SignedAdvertisementStatusSet::sign(set, keypair);
+        self.send_signed("sendAdvertisementStatusSet", &signed)
+            .await
+    }
+
+    /// Signs `update` with `keypair` and submits it — changing trade
+    /// limits and payment methods in place.
+    ///
+    /// The advertisement keeps its id, which is the point: republishing
+    /// under a new one orphans every reservation, settlement and review
+    /// that named the old.
+    pub async fn send_advertisement_terms_update(
+        &self,
+        update: AdvertisementTermsUpdate,
+        keypair: &Keypair,
+    ) -> Result<()> {
+        let signed = SignedAdvertisementTermsUpdate::sign(update, keypair);
+        self.send_signed("sendAdvertisementTermsUpdate", &signed)
+            .await
     }
 
     /// Signs `update` with `keypair` and submits it — repricing an existing

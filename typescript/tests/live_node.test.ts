@@ -536,17 +536,17 @@ describe.skipIf(!endpoint)("against a real node", () => {
     // merchant the event claims to be from.
     const impostor = await generateKeypair();
     await expect(
-      advertisements.sendAdvertisementDisable(
+      advertisements.sendAdvertisementStatusSet(
         client,
-        { id: adId, merchant: merchantId, timestamp: Date.now() },
+        { id: adId, merchant: merchantId, status: "Disabled", timestamp: Date.now() },
         impostor,
       ),
     ).rejects.toThrow();
     expect((await advertisements.getAdvertisement(client, adId))?.status).toBe("Active");
 
-    await advertisements.sendAdvertisementDisable(
+    await advertisements.sendAdvertisementStatusSet(
       client,
-      { id: adId, merchant: merchantId, timestamp: Date.now() },
+      { id: adId, merchant: merchantId, status: "Disabled", timestamp: Date.now() },
       merchant,
     );
     // Disabled, not deleted: still readable, still carrying the price the
