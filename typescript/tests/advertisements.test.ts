@@ -14,6 +14,7 @@ import {
   type AdvertisementPage,
   type AdvertisementPriceUpdate,
   type AdvertisementView,
+  type PriceQuote,
 } from "../src/types.js";
 
 /**
@@ -35,15 +36,23 @@ function stubTransport(): { calls: CapturedCall[]; client: Client } {
     return {
       ok: true,
       status: 200,
-      text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: null }),
+      text: async () =>
+        JSON.stringify({ jsonrpc: "2.0", id: body.id, result: null }),
     };
   });
-  return { calls, client: new Client({ endpoint: "http://localhost:7080", timeoutMs: 30_000 }) };
+  return {
+    calls,
+    client: new Client({
+      endpoint: "http://localhost:7080",
+      timeoutMs: 30_000,
+    }),
+  };
 }
 
 function onlyCall(calls: CapturedCall[]): CapturedCall {
   const call = calls[0];
-  if (!call) throw new Error("expected exactly one captured RPC call, got none");
+  if (!call)
+    throw new Error("expected exactly one captured RPC call, got none");
   return call;
 }
 
@@ -79,7 +88,11 @@ describe("advertisement lifecycle methods", () => {
     // The node verifies over the JSON of the inner struct, not the envelope.
     const signedBytes = new TextEncoder().encode(JSON.stringify(disable));
     await expect(
-      ed.verifyAsync(Uint8Array.from(payload.signature), signedBytes, keypair.publicKey),
+      ed.verifyAsync(
+        Uint8Array.from(payload.signature),
+        signedBytes,
+        keypair.publicKey,
+      ),
     ).resolves.toBe(true);
   });
 
@@ -99,7 +112,11 @@ describe("advertisement lifecycle methods", () => {
     const payload = decodePayload(onlyCall(calls)) as { signature: number[] };
     const signedBytes = new TextEncoder().encode(JSON.stringify(disable));
     await expect(
-      ed.verifyAsync(Uint8Array.from(payload.signature), signedBytes, owner.publicKey),
+      ed.verifyAsync(
+        Uint8Array.from(payload.signature),
+        signedBytes,
+        owner.publicKey,
+      ),
     ).resolves.toBe(false);
   });
 
@@ -126,7 +143,11 @@ describe("advertisement lifecycle methods", () => {
 
     const signedBytes = new TextEncoder().encode(JSON.stringify(update));
     await expect(
-      ed.verifyAsync(Uint8Array.from(payload.signature), signedBytes, keypair.publicKey),
+      ed.verifyAsync(
+        Uint8Array.from(payload.signature),
+        signedBytes,
+        keypair.publicKey,
+      ),
     ).resolves.toBe(true);
   });
 
@@ -146,7 +167,11 @@ describe("advertisement lifecycle methods", () => {
     const payload = decodePayload(onlyCall(calls)) as { signature: number[] };
     const signedBytes = new TextEncoder().encode(JSON.stringify(update));
     await expect(
-      ed.verifyAsync(Uint8Array.from(payload.signature), signedBytes, owner.publicKey),
+      ed.verifyAsync(
+        Uint8Array.from(payload.signature),
+        signedBytes,
+        owner.publicKey,
+      ),
     ).resolves.toBe(false);
   });
 
@@ -164,20 +189,33 @@ describe("advertisement lifecycle methods", () => {
     const update: AdvertisementPriceUpdate = {
       id: "ad-1",
       merchant: toBytes(peerIdFromPublicKey(keypair.publicKey)),
-      pricing: { Floating: { oracle_provider: "any", premium_bps: 150, price_decimals: 2 } },
+      pricing: {
+        Floating: {
+          oracle_provider: "any",
+          premium_bps: 150,
+          price_decimals: 2,
+        },
+      },
       timestamp: 1_785_326_039_513,
     };
 
     await sendAdvertisementPriceUpdate(client, update, keypair);
 
-    const payload = decodePayload(onlyCall(calls)) as { update: AdvertisementPriceUpdate };
+    const payload = decodePayload(onlyCall(calls)) as {
+      update: AdvertisementPriceUpdate;
+    };
     expect(payload.update.pricing).toEqual({
       Floating: { oracle_provider: "any", premium_bps: 150, price_decimals: 2 },
     });
     // `pricing` sits between `merchant` and `timestamp`, and the model is
     // externally tagged, because that is how `serde` writes the enum the
     // node reads back. The signature covers these bytes in this order.
-    expect(Object.keys(payload.update)).toEqual(["id", "merchant", "pricing", "timestamp"]);
+    expect(Object.keys(payload.update)).toEqual([
+      "id",
+      "merchant",
+      "pricing",
+      "timestamp",
+    ]);
   });
 });
 
@@ -197,19 +235,31 @@ describe("advertisement lifecycle methods", () => {
 type CapturedQuery = { method: string; params: Record<string, unknown> };
 
 /** Answers each call with the next scripted page, recording every request. */
-function stubPages(pages: AdvertisementPage[]): { calls: CapturedQuery[]; client: Client } {
+function stubPages(pages: AdvertisementPage[]): {
+  calls: CapturedQuery[];
+  client: Client;
+} {
   const calls: CapturedQuery[] = [];
   vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
     const body = JSON.parse(init.body);
     calls.push({ method: body.method, params: body.params });
-    const result = pages[calls.length - 1] ?? { advertisements: [], next_cursor: null };
+    const result = pages[calls.length - 1] ?? {
+      advertisements: [],
+      next_cursor: null,
+    };
     return {
       ok: true,
       status: 200,
       text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result }),
     };
   });
-  return { calls, client: new Client({ endpoint: "http://localhost:7080", timeoutMs: 30_000 }) };
+  return {
+    calls,
+    client: new Client({
+      endpoint: "http://localhost:7080",
+      timeoutMs: 30_000,
+    }),
+  };
 }
 
 function row(id: string): AdvertisementView {
@@ -229,12 +279,19 @@ function row(id: string): AdvertisementView {
     created_at: 1_785_326_039_513,
     updated_at: 1_785_326_039_513,
     asset_symbol: "USDC",
+    // A fixed advertisement, so the quote is the merchant's own number and
+    // no oracle is consulted. Note the discriminant: `quote` is tagged on
+    // `kind` while `pricing` directly above is externally tagged — the two
+    // travel on the same row and do not share a shape.
+    quote: { kind: "Fixed", price: { base_units: 12_950, decimals: 2 } },
   };
 }
 
 describe("reading the order book a page at a time", () => {
   it("asks for the first page of the whole active book when given no query", async () => {
-    const { calls, client } = stubPages([{ advertisements: [row("ad-1")], next_cursor: null }]);
+    const { calls, client } = stubPages([
+      { advertisements: [row("ad-1")], next_cursor: null },
+    ]);
 
     const page = await getAdvertisements(client);
 
@@ -248,7 +305,9 @@ describe("reading the order book a page at a time", () => {
   });
 
   it("sends the filter to the node instead of applying it to the reply", async () => {
-    const { calls, client } = stubPages([{ advertisements: [], next_cursor: null }]);
+    const { calls, client } = stubPages([
+      { advertisements: [], next_cursor: null },
+    ]);
 
     await getAdvertisements(client, {
       filter: {
@@ -283,12 +342,16 @@ describe("reading the order book a page at a time", () => {
     // starts computing its own `after` from the last row it saw, this
     // stops matching.
     const { calls, client } = stubPages([
-      { advertisements: [row("ad-1"), row("ad-2")], next_cursor: "opaque-cursor-1" },
+      {
+        advertisements: [row("ad-1"), row("ad-2")],
+        next_cursor: "opaque-cursor-1",
+      },
       { advertisements: [row("ad-3")], next_cursor: null },
     ]);
 
     const seen: string[] = [];
-    for await (const advertisement of eachAdvertisement(client)) seen.push(advertisement.id);
+    for await (const advertisement of eachAdvertisement(client))
+      seen.push(advertisement.id);
 
     expect(seen).toEqual(["ad-1", "ad-2", "ad-3"]);
     expect(calls).toHaveLength(2);
@@ -315,7 +378,10 @@ describe("reading the order book a page at a time", () => {
     expect(seen).toEqual(["ad-1", "ad-2"]);
     expect(calls.map((c) => c.params)).toEqual([
       { filter: { fiat_currency: "KES" }, page: { limit: 1 } },
-      { filter: { fiat_currency: "KES" }, page: { limit: 1, after: "cursor-1" } },
+      {
+        filter: { fiat_currency: "KES" },
+        page: { limit: 1, after: "cursor-1" },
+      },
     ]);
   });
 
@@ -330,9 +396,82 @@ describe("reading the order book a page at a time", () => {
     ]);
 
     const seen: string[] = [];
-    for await (const advertisement of eachAdvertisement(client)) seen.push(advertisement.id);
+    for await (const advertisement of eachAdvertisement(client))
+      seen.push(advertisement.id);
 
     expect(seen).toEqual(["ad-1"]);
     expect(calls).toHaveLength(2);
+  });
+});
+
+describe("the price quote a node attaches to every advertisement", () => {
+  /** What a client would render. Deliberately exhaustive with no default
+   *  branch, so adding a fourth quote variant fails to compile here rather
+   *  than falling through to whatever the last case happened to be. */
+  function describeQuote(quote: PriceQuote): string {
+    switch (quote.kind) {
+      case "Fixed":
+        return `${quote.price.base_units} fixed`;
+      case "Floating":
+        return `${quote.price.base_units} until ${quote.mid_expires_at}`;
+      case "Unpriceable":
+        return `no price: ${quote.reason}`;
+    }
+  }
+
+  it("distinguishes a fixed price from a floating one that expires", async () => {
+    // The distinction the tagging exists for. Both carry a `price` and a
+    // client reading only that cannot tell which of the two promises it is
+    // looking at — one holds until the merchant signs a new one, the other
+    // may have moved by the time the reader commits to it.
+    const floating: AdvertisementView = {
+      ...row("ad-floating"),
+      quote: {
+        kind: "Floating",
+        price: { base_units: 13_100, decimals: 2 },
+        mid_rate: 129.5,
+        premium_bps: 150,
+        mid_expires_at: 1_785_326_099_513,
+      },
+    };
+    const { client } = stubPages([
+      { advertisements: [row("ad-fixed"), floating], next_cursor: null },
+    ]);
+
+    const page = await getAdvertisements(client, {});
+
+    expect(page.advertisements.map((a) => describeQuote(a.quote))).toEqual([
+      "12950 fixed",
+      "13100 until 1785326099513",
+    ]);
+  });
+
+  it("carries an unpriceable advertisement through with its reason, not as a zero", async () => {
+    // An ad whose oracle feed has lapsed still exists and still has terms.
+    // Reporting it as a price of zero would advertise it as free; dropping
+    // it would hide a merchant's book from them. `premium_bps` survives so
+    // the terms remain displayable while the number is honestly absent.
+    const lapsed: AdvertisementView = {
+      ...row("ad-lapsed"),
+      quote: {
+        kind: "Unpriceable",
+        reason: "StaleOracleData",
+        premium_bps: 150,
+      },
+    };
+    const { client } = stubPages([
+      { advertisements: [lapsed], next_cursor: null },
+    ]);
+
+    const page = await getAdvertisements(client, {});
+    const only = page.advertisements[0];
+    if (!only)
+      throw new Error("the stubbed page carries exactly one advertisement");
+    const quote = only.quote;
+
+    expect(describeQuote(quote)).toBe("no price: StaleOracleData");
+    // The type is what stops a caller reading `price` off this at all:
+    // narrowing is required before the field exists.
+    expect("price" in quote).toBe(false);
   });
 });

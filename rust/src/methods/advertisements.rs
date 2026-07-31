@@ -1,47 +1,37 @@
 //! Advertisement methods (OFS-2100).
 //!
-//! # These are broken against a current node, and cannot be fixed here
+//! An advertisement names its asset by mint address rather than by ticker:
+//! a ticker on a record is a label the merchant chose, and nothing tied it
+//! to the token the escrow would actually move, so an ad could say "USDC"
+//! and settle in something else with every layer agreeing the trade
+//! completed. The name a buyer reads is resolved from the mint *by the
+//! node* and arrives beside the record, never inside it.
 //!
-//! An advertisement now names its asset by mint address —
-//! `asset_mint: MintAddress` replaced `asset: String`, because a ticker
-//! on a record is a label the merchant chose and nothing tied it to the
-//! token the escrow would actually move; an ad could say "USDC" and
-//! settle in something else, with every layer agreeing the trade
-//! completed. A reader also gets `asset_symbol` alongside the record,
-//! resolved from the mint *by the node* rather than supplied by the
-//! merchant.
+//! Every record shape below is `openfiat-advertisements`', imported rather
+//! than transcribed, so this SDK and a real node cannot describe different
+//! wire formats.
 //!
-//! Every shape below is `openfiat-advertisements`', imported so this SDK
-//! and a real node cannot describe different wire formats. That is
-//! working as intended and is exactly why nothing here can be patched:
-//! `rust/Cargo.toml` pins `openfiat-core` to a revision that predates the
-//! change, so `Advertisement` here still has `asset`, and neither
-//! `MintAddress` nor `asset_symbol` exists to write down. A build against
-//! that pin fails to decode a current node's reply with ``missing field
-//! `asset` ``, and a `sendAdvertisementCreate` it builds is refused for
-//! the same reason in the other direction.
+//! # Why the filter and page types are still written out here
 //!
-//! Bumping the pin is the whole fix, and it is its own piece of work —
-//! these methods correct themselves the moment it lands, since the types
-//! come from there. The TypeScript SDK, which transcribes its shapes
-//! rather than importing them, is already on the new field and is proved
-//! against a node at HEAD.
+//! An earlier revision of this module said they were hand-written only
+//! because `openfiat_advertisements::query` postdated the pinned core, and
+//! would become re-exports as soon as the pin moved. The pin has moved,
+//! and they have not — because re-exporting turns out to lose a property
+//! that matters.
 //!
-//! The same pin is why [`AdvertisementFilter`] and
-//! [`AdvertisementPageRequest`] below are written out here instead of
-//! re-exported: at HEAD they are `openfiat_advertisements::query`'s own
-//! `AdvertisementFilter` and `Page`, deriving both halves of `serde`, and
-//! that module does not exist at the pinned revision. They become
-//! re-exports the moment it moves, and their one deliberate deviation —
-//! `asset_mint` as a `String` rather than a `MintAddress` — becomes a
-//! type error at the same instant, which is the point of writing it down
-//! this way rather than leaving the whole thing out.
+//! Core's `AdvertisementFilter` and `Page` mark every field
+//! `#[serde(default)]` but nothing skips serializing a `None`. A default
+//! query built from them goes out as a wall of explicit nulls. The node
+//! reads that identically, so nothing breaks — but "every constraint the
+//! caller named, and nothing they did not" stops being visible on the
+//! wire, and the request stops being readable as a statement of intent.
+//! The versions here skip absent constraints instead, which is what
+//! `tests/advertisements_paging.rs` pins.
 //!
-//! What that leaves unproven is only the row shape. The paging envelope
-//! and the request are exercised offline against a capturing server in
-//! `tests/advertisements_paging.rs`; that the rows inside it decode from
-//! a *current* node cannot be shown from here, because the pinned
-//! `Advertisement` is the wrong shape to decode them into.
+//! What the moved pin *did* fix is the deviation that note flagged:
+//! `asset_mint` and `fiat_currency` are the real newtypes now, so a filter
+//! cannot carry a mint that is not 32 bytes of base58 or a currency that
+//! is not a currency code.
 
 use crate::client::{Client, IdParams};
 use crate::error::Result;
@@ -49,9 +39,10 @@ use openfiat_advertisements::events::{
     AdvertisementCreate, AdvertisementDisable, AdvertisementPriceUpdate, SignedAdvertisementCreate,
     SignedAdvertisementDisable, SignedAdvertisementPriceUpdate,
 };
+use openfiat_advertisements::pricing::PriceQuote;
 use openfiat_advertisements::{Advertisement, AdvertisementId, AdvertisementStatus, Direction};
-use openfiat_crypto::Keypair;
-use openfiat_types::Amount;
+use openfiat_crypto::{Keypair, MintAddress};
+use openfiat_types::{Amount, FiatCurrency};
 
 /// What a trader actually chooses by, sent to the node rather than
 /// applied to the reply.
@@ -67,18 +58,14 @@ use openfiat_types::Amount;
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
 pub struct AdvertisementFilter {
     /// The token being traded, by mint address — an identity, not a
-    /// ticker. Base58, 32 bytes; the node refuses anything else at
-    /// decode.
-    ///
-    /// A `String` only because `MintAddress` postdates the pinned
-    /// revision (see this module's own note). It is the same base58 text
-    /// on the wire either way.
+    /// ticker. Base58, 32 bytes, enforced by the type.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub asset_mint: Option<String>,
-    /// Matched case-insensitively — a currency code is a code, and `kes`
-    /// finds the same offers as `KES`.
+    pub asset_mint: Option<MintAddress>,
+    /// A currency code is a code, so `kes` and `KES` find the same offers:
+    /// [`FiatCurrency`] uppercases at construction, and the normalised
+    /// form is what goes on the wire.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fiat_currency: Option<String>,
+    pub fiat_currency: Option<FiatCurrency>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub direction: Option<Direction>,
     /// Matches an advertisement listing this among possibly several,
@@ -140,27 +127,57 @@ pub struct AdvertisementQuery {
     pub page: AdvertisementPageRequest,
 }
 
+/// An advertisement as a reader gets it: the stored record, plus the two
+/// things the node resolves at the moment it answers.
+///
+/// Neither addition is part of the record and neither may become part of
+/// it. Both are derived at the edge by the node — the symbol from a table
+/// every node compiles in identically, the quote from that node's own
+/// oracle reading — so a merchant can sign neither.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct AdvertisementView {
+    #[serde(flatten)]
+    pub advertisement: Advertisement,
+    /// What people call `asset_mint`, or `None` if this build knows no
+    /// name for it. `None` is not an error and not a reason to guess: an
+    /// unnamed mint is an address with no nickname, and showing the
+    /// address is unhelpful and true rather than helpful and false.
+    ///
+    /// This SDK deliberately ships no mint-to-ticker table of its own.
+    /// One here would drift from the node's answer the first time
+    /// governance allowlists a mint, which is precisely the disagreement
+    /// between two honest builds that resolving at the node avoids.
+    pub asset_symbol: Option<String>,
+    /// What this advertisement's own terms produce right now.
+    ///
+    /// Not the same thing as `advertisement.pricing`, and the difference
+    /// is easy to miss: `pricing` is the merchant's standing instruction
+    /// ("oracle mid plus 150 bps"), while this is what that instruction
+    /// resolved to against the oracle reading the node had when it
+    /// answered. A floating advertisement's `pricing` never changes while
+    /// its quote moves all day.
+    pub quote: PriceQuote,
+}
+
 /// One page of the order book.
 ///
 /// A shape change: `getAdvertisements` answered with a bare array, and a
 /// build expecting one fails to decode this outright. That array was every
 /// advertisement on the network, from a call that took no parameters — a
 /// response growing without bound over a book nobody could search.
-///
-/// The rows are the stored records. A node sends each one with its
-/// resolved `quote` and an `asset_symbol` beside it; both are dropped
-/// here, the same as [`Client::get_advertisement`] already drops them,
-/// because neither has a shape to decode into at the pinned revision.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct AdvertisementPage {
-    pub advertisements: Vec<Advertisement>,
+    pub advertisements: Vec<AdvertisementView>,
     /// Hand straight back as [`AdvertisementPageRequest::after`] to
     /// continue. `None` means this was the last page.
     pub next_cursor: Option<AdvertisementId>,
 }
 
 impl Client {
-    pub async fn get_advertisement(&self, id: impl Into<String>) -> Result<Option<Advertisement>> {
+    pub async fn get_advertisement(
+        &self,
+        id: impl Into<String>,
+    ) -> Result<Option<AdvertisementView>> {
         self.call("getAdvertisement", IdParams { id: id.into() })
             .await
     }

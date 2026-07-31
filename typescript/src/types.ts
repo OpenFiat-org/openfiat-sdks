@@ -71,7 +71,13 @@ export type OracleData =
         status: string;
       };
     }
-  | { PaymentInfrastructure: { rail: string; available: boolean; note: string | null } }
+  | {
+      PaymentInfrastructure: {
+        rail: string;
+        available: boolean;
+        note: string | null;
+      };
+    }
   | {
       RegionalMetadata: {
         country: string;
@@ -264,9 +270,16 @@ export type MintAddress = string;
  */
 export type PricingModel =
   | { Fixed: { price: Amount } }
-  | { Floating: { oracle_provider: string; premium_bps: number; price_decimals: number } };
+  | {
+      Floating: {
+        oracle_provider: string;
+        premium_bps: number;
+        price_decimals: number;
+      };
+    };
 
-export type AdvertisementStatus = "Active" | "Disabled" | "Vacation" | "Deleted";
+export type AdvertisementStatus =
+  "Active" | "Disabled" | "Vacation" | "Deleted";
 
 export interface AdvertisementCreate {
   id: string;
@@ -338,9 +351,60 @@ export interface Advertisement {
   updated_at: TimestampMs;
 }
 
+/** Why an advertisement has no price at the instant it was asked.
+ *
+ *  These are three different situations and a caller that collapses them
+ *  tells a user the wrong thing: `NoOracleData` means nobody prices this
+ *  pair at all, `StaleOracleData` means the feed existed and lapsed, and
+ *  `PriceOutOfRange` means the merchant's own premium puts the result
+ *  outside what an {@link Amount} can hold. Only the middle one is likely
+ *  to fix itself. */
+export type UnpriceableReason =
+  "NoOracleData" | "StaleOracleData" | "PriceOutOfRange";
+
+/**
+ * An advertisement's price at one instant, or the reason it has none.
+ *
+ * **Note the tag.** Unlike {@link PricingModel}, which is externally
+ * tagged (`{ Fixed: { … } }`), this arrives internally tagged on a `kind`
+ * discriminant. The two sit next to each other on the same response and do
+ * not share a shape, so reaching for the wrong one silently yields
+ * `undefined` rather than a type error at the boundary.
+ *
+ * A discriminated union rather than a nullable price, because the three
+ * cases are three different promises and a caller has to be made to
+ * choose:
+ *
+ * - `Fixed` is a merchant-set number. It cannot fail to resolve, and moves
+ *   only when the merchant signs a new one.
+ * - `Floating` is an oracle mid plus the merchant's premium. It is good
+ *   only until `mid_expires_at` and may move before then.
+ * - `Unpriceable` is an advertisement that exists and currently has no
+ *   price. It still carries `premium_bps`, so a client can show the ad's
+ *   terms while being explicit that there is no number today.
+ *
+ * Reading `price` off a bare object would let `Unpriceable` be rendered as
+ * free, and would let a floating quote be held as though it were fixed —
+ * which is exactly the stale-price bug that a reservation's signed
+ * `agreed_price` exists to catch one layer down. `mid_expires_at` is what
+ * makes a floating quote safe to display and unsafe to keep.
+ */
+export type PriceQuote =
+  | { kind: "Fixed"; price: Amount }
+  | {
+      kind: "Floating";
+      price: Amount;
+      mid_rate: number;
+      premium_bps: number;
+      /** When the mid behind this number lapses — how long a caller may
+       *  treat the quote as live. Past this, re-read; do not re-use. */
+      mid_expires_at: TimestampMs;
+    }
+  | { kind: "Unpriceable"; reason: UnpriceableReason; premium_bps: number };
+
 /**
  * An advertisement as a reader gets it: the record above, plus the name
- * the node resolved for its mint.
+ * the node resolved for its mint and the price it resolved at read time.
  *
  * A separate type rather than a field on {@link Advertisement} because
  * the symbol is not part of the record and must never become part of it.
@@ -363,6 +427,17 @@ export interface AdvertisementView extends Advertisement {
    * user is the address itself.
    */
   asset_symbol: string | null;
+  /**
+   * The price this advertisement resolves to right now, resolved by the
+   * node when it answered — not stored on the record, and not the same
+   * thing as `pricing`.
+   *
+   * `pricing` is the merchant's standing instruction ("oracle mid plus 150
+   * bps"); this is what that instruction produced against the oracle
+   * reading the node had at the moment of the call. A floating ad's
+   * `pricing` never changes while its `quote` moves all day.
+   */
+  quote: PriceQuote;
 }
 
 /**
@@ -695,7 +770,8 @@ export interface PublicTrade {
 export type DisputeStatus = "Open" | "CaseLocked" | "RevealPhase" | "Resolved";
 
 /** §17's resolution outcomes. */
-export type Resolution = "BuyerWins" | "MerchantWins" | "MutualSettlement" | "Invalid";
+export type Resolution =
+  "BuyerWins" | "MerchantWins" | "MutualSettlement" | "Invalid";
 
 /** One arbitrator's vote — no `MutualSettlement`, which is a party-agreed
  *  outcome that bypasses arbitration entirely. */
@@ -794,18 +870,10 @@ export interface WalletChallenge {
  *  time so a destination sealed for one channel cannot be routed to a
  *  gateway that serves another. */
 export type NotificationChannel =
-  | "Email"
-  | "Telegram"
-  | "Sms"
-  | "Push"
-  | "Webhook";
+  "Email" | "Telegram" | "Sms" | "Push" | "Webhook";
 
 export type NotificationCategory =
-  | "Trading"
-  | "Marketplace"
-  | "Disputes"
-  | "Governance"
-  | "Infrastructure";
+  "Trading" | "Marketplace" | "Disputes" | "Governance" | "Infrastructure";
 
 export type NotificationTrigger =
   | "ReservationCreated"
@@ -826,13 +894,7 @@ export type NotificationTrigger =
   | "ProviderOffline";
 
 export type DeliveryStatus =
-  | "Queued"
-  | "Sent"
-  | "Delivered"
-  | "Read"
-  | "Failed"
-  | "Retried"
-  | "Expired";
+  "Queued" | "Sent" | "Delivered" | "Read" | "Failed" | "Retried" | "Expired";
 
 /**
  * A destination sealed to the gateway that will deliver it
