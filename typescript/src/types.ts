@@ -157,6 +157,48 @@ export interface ServicePricing {
   unit: BillingUnit;
 }
 
+/**
+ * What a service says it is called and looks like (OFS-1500 §9).
+ *
+ * Every field is self-asserted. A registration is signed by the key that
+ * made it and by nobody else, which proves the record was not altered in
+ * transit and proves nothing about whether the name is the signer's to
+ * use — anyone can register a service called "Binance". Render all of it
+ * as a claim, beside the Service ID rather than instead of it.
+ *
+ * A node bounds these on the way in (64 characters of name, 280 of
+ * description, 256 of website; `http`/`https` only; no control or
+ * bidirectional-override characters) and refuses the whole registration
+ * otherwise, so a value that would misrender never reaches storage.
+ */
+export interface ServiceBranding {
+  /** A human name for the service — "AllenHark EU", not a legal entity.
+   *  Not unique: two providers may deliberately declare the same one. */
+  name: string | null;
+  description: string | null;
+  /**
+   * A logo, as an IPFS CID — never a URL. A URL would let the operator
+   * change the image after publication and would make every viewer of a
+   * provider directory issue a request to a server the provider
+   * controls, which is a tracking beacon. A CID names one image and is
+   * served by the node the viewer already chose to talk to, over its own
+   * `GET /ipfs/{cid}`.
+   */
+  logo: string | null;
+  /** A website for whoever runs the service. Deliberately not `url`: a
+   *  registration already carries `endpoints`, which is where the
+   *  *service* is. This is the one a reader clicks. */
+  website: string | null;
+}
+
+/**
+ * Field order is not cosmetic. `SignedRegistration` is verified against a
+ * re-serialization of this object on the node, so the JSON key order
+ * `JSON.stringify` produces must match the Rust declaration order — and
+ * `branding` sits between `capabilities` and `pricing`. Move it, or omit
+ * it, and the bytes the node hashes differ from the bytes signed here,
+ * which surfaces as `INVALID_SIGNATURE` rather than as a missing field.
+ */
 export interface Registration {
   service_id: string;
   service_type: ServiceType;
@@ -166,6 +208,9 @@ export interface Registration {
   supported_ofs: number[];
   region: string | null;
   capabilities: string[];
+  /** Name, description, logo and website as declared, or `null` when the
+   *  provider declared nothing — which most do. */
+  branding: ServiceBranding | null;
   pricing: ServicePricing | null;
   /** Base58 Solana address earnings are payable to. Required whenever
    *  `pricing` is set — a node rejects a price with nowhere to be paid. */
@@ -217,6 +262,10 @@ export interface ServiceRecord {
   supported_ofs: number[];
   region: string | null;
   capabilities: string[];
+  /** As declared at registration, or `null`. Self-asserted — a signature
+   *  proves the record was not altered, never that the name is the
+   *  signer's to use. See {@link ServiceBranding}. */
+  branding: ServiceBranding | null;
   pricing: ServicePricing | null;
   payout_wallet: string | null;
   health: HealthState;

@@ -15,7 +15,7 @@
 //!
 //! Run with `cargo run --example stake_and_vote`.
 
-use openfiat_sdk::onchain::{ProposalCategory, Role, governance, staking};
+use openfiat_sdk::onchain::{OPEN_MINT, ProposalCategory, Role, governance, staking};
 use solana_hash::Hash;
 use solana_keypair::Keypair;
 use solana_message::Message;
@@ -25,7 +25,10 @@ use solana_signer::Signer;
 fn main() {
     let admin = Keypair::new();
     let voter = Keypair::new();
-    let mint = Pubkey::new_unique();
+    // The real thing, not a stand-in: staking and governance are
+    // denominated in OPEN and nothing else, so the mint is not a
+    // parameter of this flow.
+    let mint = OPEN_MINT;
     let voter_open_account = Pubkey::new_unique();
     let deposit_source = Pubkey::new_unique();
 

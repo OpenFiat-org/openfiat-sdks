@@ -42,6 +42,7 @@ async function main() {
     supported_ofs: [1500, 6000],
     region: null,
     capabilities: ["Webhook"],
+    branding: null,
     pricing: null,
     payout_wallet: null,
     timestamp: Date.now(),

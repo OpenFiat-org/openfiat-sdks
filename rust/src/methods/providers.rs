@@ -1,5 +1,27 @@
 //! Service Registry methods (OFS-1500) — backs notification/oracle/
 //! risk/snapshot provider discovery.
+//!
+//! # `branding` is missing here, and only because of the pin
+//!
+//! A registration now carries what the service is called, what it looks
+//! like and where to read more (OFS-1500 §9): `Registration` and
+//! `ServiceRecord` both gained `branding: Option<ServiceBranding>`. This
+//! SDK does not redeclare either shape — they are `openfiat-registry`'s,
+//! imported so a real node and this crate cannot describe different wire
+//! formats — and `rust/Cargo.toml` pins `openfiat-core` to a revision
+//! that predates the field. So there is nothing to set and nothing to
+//! read, and a registration built here serializes without it, which a
+//! node at HEAD verifies against a re-serialization that has it: the
+//! signature fails rather than the field being ignored.
+//!
+//! Bumping the pin is the whole fix, it is the same bump
+//! [`crate::methods::reservations`] is waiting on, and it is its own
+//! piece of work. Nothing needs writing here when it lands — the type
+//! arrives with the dependency, and any construction site that must now
+//! name the field becomes a compile error that says so.
+//!
+//! The TypeScript SDK transcribes its shapes rather than importing them,
+//! so it carries `branding` today; see `typescript/src/types.ts`.
 
 use crate::client::{Client, IdParams};
 use crate::error::Result;

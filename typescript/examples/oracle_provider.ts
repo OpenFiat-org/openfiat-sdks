@@ -37,6 +37,7 @@ async function main() {
     supported_ofs: [1500, 7000],
     region: "Kenya",
     capabilities: ["USDC/KES"],
+    branding: null,
     pricing: null,
     payout_wallet: null,
     timestamp: Date.now(),

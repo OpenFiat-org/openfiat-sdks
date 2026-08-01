@@ -11,6 +11,27 @@ export const STAKING_PROGRAM_ID = new PublicKey("HYEXk8XQukBkZbiYB33JyVefQDxqyCp
 export const GOVERNANCE_PROGRAM_ID = new PublicKey("AVJfKUjHsizkGGUy8sdz4Xma2hVgmgvgg8GmUMs8E4eE");
 
 /**
+ * The OPEN token mint (Token-2022) — the protocol's own token, and the
+ * denomination of every stake account, rewards vault and treasury bucket
+ * the staking and governance builders touch.
+ *
+ * Exported for the same reason the program ids above are.
+ * `openfiat-core` pins this in `crates/chain/src/programs.rs` as a
+ * compile-time constant so a node operator cannot nominate the token
+ * their own stake is denominated in; a caller that has to retype the
+ * base58 string to call `staking.stakeIx` reintroduces exactly that, one
+ * layer out. A wrong mint does not fail loudly — it derives a real,
+ * empty associated token account, and the transaction is rejected for a
+ * balance the caller can see in a wallet holding the other token.
+ *
+ * Not a default anywhere, and specifically not escrow's: a trade settles
+ * in whichever mint the advertisement names (wSOL, USDC), which is why
+ * the escrow builders take the mint and its token program as parameters.
+ * This is the answer only where the protocol itself is the counterparty.
+ */
+export const OPEN_MINT = new PublicKey("29w8TroBTYoaqrXBDcpv5L54VZRA8Kf7kU5U1cakvFdj");
+
+/**
  * The SPL Token-2022 program.
  *
  * Still the right answer for staking and governance, which deal only in

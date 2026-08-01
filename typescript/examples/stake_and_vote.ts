@@ -22,7 +22,9 @@ import { Keypair, SystemProgram, Transaction } from "@solana/web3.js";
 import { onchain } from "../src/index.js";
 
 function main() {
-  const mint = Keypair.generate().publicKey; // stand-in for a real OPEN Token-2022 mint
+  // The real thing, not a stand-in: staking and governance are denominated
+  // in OPEN and nothing else, so the mint is not a parameter of this flow.
+  const mint = onchain.OPEN_MINT;
   const admin = Keypair.generate();
   const owner = Keypair.generate();
   const ownerTokenAccount = Keypair.generate().publicKey;
@@ -30,7 +32,7 @@ function main() {
   const stakingIxs = [
     onchain.staking.initializeStakingConfigIx(admin.publicKey, mint, {
       minStakeByRole: [1_000n, 5_000n, 1_000n, 5_000n, 1_000n, 1_000n, 1_000n],
-      unbondingPeriodSecsByRole: Array<bigint>(ROLE_COUNT).fill(604_800n), // 7 days
+      unbondingPeriodSecsByRole: Array<bigint>(onchain.ROLE_COUNT).fill(604_800n), // 7 days
       slashBps: 500, // 5%
       slashingAuthority: admin.publicKey,
       slashDestination: Keypair.generate().publicKey,
@@ -62,6 +64,11 @@ function main() {
       new Uint8Array(32), // sha256(title) — a real caller hashes the actual proposal text
       new Uint8Array(32), // sha256(summary)
       604_800n, // 7-day voting period
+      // What passing this proposal is authorized to do. `noAction` is the
+      // honest answer for a Parameter proposal today — the action is fixed
+      // here and can never be attached afterwards, so it is a required
+      // argument rather than an optional one.
+      onchain.governance.noAction,
     ),
     onchain.governance.castVoteIx(owner.publicKey, proposalId, true, onchain.Role.Merchant),
   ];

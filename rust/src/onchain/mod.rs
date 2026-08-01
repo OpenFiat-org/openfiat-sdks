@@ -34,6 +34,25 @@ pub const STAKING_PROGRAM_ID: Pubkey = pubkey!("HYEXk8XQukBkZbiYB33JyVefQDxqyCpP
 /// `openfiat-governance`'s deployed program id.
 pub const GOVERNANCE_PROGRAM_ID: Pubkey = pubkey!("AVJfKUjHsizkGGUy8sdz4Xma2hVgmgvgg8GmUMs8E4eE");
 
+/// The OPEN token mint (Token-2022) — the protocol's own token, and the
+/// denomination of every stake account, rewards vault and treasury bucket
+/// in [`crate::onchain::staking`] and [`crate::onchain::governance`].
+///
+/// Exported for the same reason the program ids above are. `openfiat-core`
+/// pins this in `crates/chain/src/programs.rs` as a compile-time constant
+/// so a node operator cannot nominate the token their own stake is
+/// denominated in (#105); a caller that has to retype the base58 string to
+/// build a `stake_ix` reintroduces exactly that, one layer out. A wrong
+/// mint here does not fail loudly — it derives a real, empty associated
+/// token account and the transaction is rejected for a balance the caller
+/// can see in a wallet that holds the other token.
+///
+/// Not a default anywhere, and specifically not escrow's: a trade settles
+/// in whatever mint the advertisement names (wSOL, USDC), which is why the
+/// escrow builders take the mint and its token program as parameters. This
+/// is the answer only where the protocol itself is the counterparty.
+pub const OPEN_MINT: Pubkey = pubkey!("29w8TroBTYoaqrXBDcpv5L54VZRA8Kf7kU5U1cakvFdj");
+
 /// The SPL Token-2022 program.
 ///
 /// Still the right answer for staking and governance, which deal only in
@@ -156,4 +175,49 @@ pub(crate) fn instruction_data(discriminator: [u8; 8], args: impl BorshSerialize
     args.serialize(&mut data)
         .expect("Borsh serialization of instruction args cannot fail");
     data
+}
+
+/// Every address in this module is checked against `openfiat-core`'s own
+/// pinned constants rather than against a second copy of the base58
+/// strings — a transcription this file cannot get wrong twice in the same
+/// way, since one side is read from the dependency `Cargo.toml` already
+/// resolves.
+///
+/// `openfiat_chain::PROGRAM_IDS` *is* the record #105 created: the
+/// compile-time protocol identity a node reads instead of its own
+/// configuration. It comes from a git dependency, so it is present in
+/// every `cargo test` run including a fresh clone's — there is nothing to
+/// skip on, and these are deliberately hard assertions. The TypeScript
+/// side cannot reach a cargo dependency and reads the deployment record
+/// from the filesystem instead; see `tests/open-mint.test.ts` there for
+/// why that one has to be allowed to skip and this one does not.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_open_mint_matches_the_mint_openfiat_core_is_pinned_to() {
+        assert_eq!(
+            OPEN_MINT.to_string(),
+            openfiat_chain::PROGRAM_IDS.mint,
+            "this SDK and openfiat-core disagree about which token is OPEN, so \
+             every stake, vote and reward built here targets an empty token account"
+        );
+    }
+
+    #[test]
+    fn the_program_ids_match_the_ones_openfiat_core_is_pinned_to() {
+        assert_eq!(
+            ESCROW_PROGRAM_ID.to_string(),
+            openfiat_chain::PROGRAM_IDS.escrow
+        );
+        assert_eq!(
+            STAKING_PROGRAM_ID.to_string(),
+            openfiat_chain::PROGRAM_IDS.staking
+        );
+        assert_eq!(
+            GOVERNANCE_PROGRAM_ID.to_string(),
+            openfiat_chain::PROGRAM_IDS.governance
+        );
+    }
 }
