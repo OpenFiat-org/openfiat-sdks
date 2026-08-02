@@ -47,7 +47,7 @@ base64 = "0.22"
 # internal wincode version conflict; these individual crates don't pull it.
 solana-transaction = { version = "3", features = ["bincode", "serde"] }
 solana-message = { version = "3", features = ["bincode"] }
-solana-hash = "3"
+solana-hash = "4"
 solana-signature = "3"
 # `curve25519` enables `Pubkey::find_program_address` (client-side PDA
 # derivation) and `borsh` implements `BorshSerialize`/`BorshDeserialize`
