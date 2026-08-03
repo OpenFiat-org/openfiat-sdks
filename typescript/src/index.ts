@@ -20,7 +20,20 @@ export {
   peerIdFromPublicKey,
   sign,
 } from "./crypto.js";
-export { SealError, seal } from "./seal.js";
+// `SealedBox` is deliberately not re-exported here: `./types.js` already
+// exports the identical shape as part of the notification surface, and two
+// exports of one name is an error rather than a convenience.
+export { SealError, openSealed, seal, sealTo } from "./seal.js";
+export {
+  DERIVATION_MESSAGE,
+  type EncryptionKeypair,
+  derivationMessageBytes,
+  deriveEncryptionKeypair,
+  encodeEncryptionPublicKey,
+  openWithEncryptionKey,
+  parseEncryptionPublicKey,
+  sealToEncryptionKey,
+} from "./encryption-key.js";
 export * from "./types.js";
 export * as advertisements from "./methods/advertisements.js";
 export * as chain from "./methods/chain.js";

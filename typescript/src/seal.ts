@@ -34,10 +34,26 @@
  * today with no new registration field, no key-distribution step, and no
  * chance of sealing to a key nobody can prove ownership of.
  *
- * There is no `open` here, and that is not an omission. Opening is the
- * *gateway's* job, and a gateway is a server holding a long-term secret —
- * it runs the Rust implementation. Shipping an opener in a browser SDK
- * would invite putting that secret somewhere a browser can reach it.
+ * # Two ways to name a recipient, one construction
+ *
+ * {@link seal} addresses an Ed25519 key and converts it. That works for a
+ * gateway, which is a server holding its own signing key and can complete
+ * the ECDH. It does not work for a person: a browser wallet exposes
+ * `signMessage` and `signTransaction` and no key material at all, so a box
+ * sealed to a wallet's Ed25519 key is one that wallet can never open.
+ *
+ * {@link sealTo} and {@link openSealed} therefore address an X25519 public
+ * key directly — the same construction with the conversion step removed,
+ * not a second scheme. The `SealedBox` on the wire is identical either way.
+ * See `./encryption-key.js` for where a wallet's X25519 key comes from.
+ *
+ * `openSealed` takes a raw secret, and the module doc used to argue that
+ * shipping an opener in a browser SDK invites putting a *gateway's*
+ * long-term secret somewhere a browser can reach it. That argument still
+ * holds and is unchanged: a gateway opens destinations with the Rust
+ * implementation on a server. What `openSealed` is for is the other case
+ * the old text did not anticipate — a key the browser derived itself, holds
+ * for the length of one call, and is the only party that ever could hold.
  */
 
 import { chacha20poly1305 } from "@noble/ciphers/chacha.js";
@@ -92,7 +108,25 @@ export function seal(recipient: Uint8Array, plaintext: Uint8Array): SealedBox {
   } catch {
     throw new SealError("recipient public key is unusable for sealing");
   }
+  return sealTo(recipientMontgomery, plaintext);
+}
 
+/**
+ * Encrypt `plaintext` so only the holder of `recipient`'s X25519 secret can
+ * read it — `openfiat_crypto::seal_to_x25519`.
+ *
+ * Use this whenever the recipient is a *person*: a wallet's published
+ * encryption key (`ClaimType::EncryptionKey`) is an X25519 point already,
+ * and it is the only key a browser wallet's owner can prove they hold the
+ * secret to.
+ *
+ * Every 32-byte string is a legal X25519 public key, so there is no invalid
+ * encoding to reject here — only a small-order one, whose shared secret is
+ * public knowledge. That is refused.
+ *
+ * @param recipient the recipient's 32-byte X25519 public key
+ */
+export function sealTo(recipientMontgomery: Uint8Array, plaintext: Uint8Array): SealedBox {
   const ephemeralSecret = x25519.utils.randomSecretKey();
   const ephemeralPublic = x25519.getPublicKey(ephemeralSecret);
 
@@ -116,6 +150,44 @@ export function seal(recipient: Uint8Array, plaintext: Uint8Array): SealedBox {
     nonce: toBytes(nonce),
     ciphertext: toBytes(ciphertext),
   };
+}
+
+/**
+ * Decrypt a box sealed by {@link sealTo} to the X25519 public key `secret`
+ * derives to — `openfiat_crypto::open_x25519`.
+ *
+ * Throws — never partial or unauthenticated output — if the box was
+ * addressed to somebody else, or if any part of it was altered in transit.
+ * The reason is deliberately not distinguished: telling "wrong recipient"
+ * apart from "tampered ciphertext" is an oracle, and the Rust side collapses
+ * them into one variant for the same reason.
+ *
+ * `secret` is clamped here exactly as it is when the public key is computed,
+ * so a caller stores 32 bytes and never has to know which form they are in.
+ *
+ * @param secret the recipient's 32-byte X25519 secret
+ */
+export function openSealed(secret: Uint8Array, sealed: SealedBox): Uint8Array {
+  const recipientMontgomery = x25519.getPublicKey(secret);
+  const ephemeralPublic = Uint8Array.from(sealed.ephemeral_public);
+
+  let shared: Uint8Array;
+  try {
+    shared = x25519.getSharedSecret(secret, ephemeralPublic);
+  } catch {
+    throw new SealError("sealed box did not open");
+  }
+
+  const { key } = derive(ephemeralPublic, recipientMontgomery, shared);
+  try {
+    return chacha20poly1305(
+      key,
+      Uint8Array.from(sealed.nonce),
+      ephemeralPublic,
+    ).decrypt(Uint8Array.from(sealed.ciphertext));
+  } catch {
+    throw new SealError("sealed box did not open");
+  }
 }
 
 /**
