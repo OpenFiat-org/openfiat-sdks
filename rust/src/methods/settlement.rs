@@ -5,8 +5,9 @@ use crate::error::Result;
 use crate::methods::redaction::PublicSettlement;
 use openfiat_crypto::Keypair;
 use openfiat_settlement::events::{
-    PaymentSubmitted, SettlementApproved, SettlementInitiate, SignedPaymentSubmitted,
-    SignedSettlementApproved, SignedSettlementInitiate,
+    PaymentSubmitted, SettlementApproved, SettlementCancelled, SettlementInitiate,
+    SettlementRejected, SignedPaymentSubmitted, SignedSettlementApproved,
+    SignedSettlementCancelled, SignedSettlementInitiate, SignedSettlementRejected,
 };
 use openfiat_settlement::{Settlement, SettlementId};
 
@@ -68,5 +69,54 @@ impl Client {
     ) -> Result<()> {
         let signed = SignedSettlementApproved::sign(approved, keypair);
         self.send_signed("sendSettlementApproved", &signed).await
+    }
+
+    /// The merchant refusing a payment they cannot find, without opening
+    /// a dispute over it.
+    ///
+    /// `keypair` must be the settlement's seller, and the settlement must
+    /// be in `PaymentSubmitted` — there is nothing to reject before the
+    /// buyer has declared payment, and a buyer cannot reject their own.
+    ///
+    /// A rejection is the merchant's recorded claim, not a ruling: a
+    /// buyer who really did pay can still open a dispute afterwards. What
+    /// it changes is who pays to escalate, instead of charging the
+    /// merchant a filing fee to say no.
+    ///
+    /// Set [`SettlementRejected::discrepancy`] to the kind that actually
+    /// applies rather than `Other`. That field is what reputation counts;
+    /// `reason` is prose nothing parses.
+    pub async fn send_settlement_rejected(
+        &self,
+        rejected: SettlementRejected,
+        keypair: &Keypair,
+    ) -> Result<()> {
+        let signed = SignedSettlementRejected::sign(rejected, keypair);
+        self.send_signed("sendSettlementRejected", &signed).await
+    }
+
+    /// Either party walking away from a settlement, before any payment is
+    /// declared.
+    ///
+    /// [`SettlementCancelled::canceller`] must be the settlement's own
+    /// buyer or seller and must be the wallet `keypair` belongs to: the
+    /// node picks the verifying key by matching that field against the
+    /// stored settlement, so naming someone else fails either the party
+    /// check or the signature check that follows it.
+    ///
+    /// Legal only from `AwaitingPayment`, and that restriction is the
+    /// security property rather than a formality — it is what stops a
+    /// merchant cancelling a settlement out from under a payment already
+    /// made. The one window it cannot close is between a buyer wiring
+    /// fiat and that buyer declaring it, so call
+    /// [`Client::send_payment_submitted`] before the money leaves, not
+    /// after it lands.
+    pub async fn send_settlement_cancelled(
+        &self,
+        cancelled: SettlementCancelled,
+        keypair: &Keypair,
+    ) -> Result<()> {
+        let signed = SignedSettlementCancelled::sign(cancelled, keypair);
+        self.send_signed("sendSettlementCancelled", &signed).await
     }
 }

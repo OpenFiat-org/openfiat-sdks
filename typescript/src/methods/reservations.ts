@@ -4,7 +4,9 @@ import {
   toBase58,
   type PublicReservation,
   type Reservation,
+  type ReservationCancel,
   type ReservationRequest,
+  type SignedReservationCancel,
   type SignedReservationRequest,
 } from "../types.js";
 import { walletProof } from "./wallet.js";
@@ -48,4 +50,32 @@ export async function sendReservationRequest(
   const signature = await sign(keypair, bytes);
   const signed: SignedReservationRequest = { request, signature: toBase58(signature) };
   return client.sendSigned("sendReservationRequest", signed);
+}
+
+/**
+ * Signs `cancel` with `keypair` and submits it — giving up a reservation
+ * and returning the merchant's liquidity to their advertisement now,
+ * rather than thirty minutes from now when the node's expiry sweep would
+ * have done it anyway.
+ *
+ * `keypair` must be the reservation's own requester; the node verifies
+ * against the public key the reservation already carries, not against
+ * anything sent here. Legal only from `EscrowLocked` — a reservation
+ * already `Cancelled` or `Expired` returns an application error rather
+ * than succeeding quietly.
+ *
+ * This cancels the reservation and nothing else. If a settlement has
+ * already been raised against it, cancel that too with
+ * `settlement.sendSettlementCancelled` — the two records are not linked,
+ * so cancelling one leaves the other running.
+ */
+export async function sendReservationCancel(
+  client: Client,
+  cancel: ReservationCancel,
+  keypair: Keypair,
+): Promise<void> {
+  const bytes = new TextEncoder().encode(JSON.stringify(cancel));
+  const signature = await sign(keypair, bytes);
+  const signed: SignedReservationCancel = { cancel, signature: toBase58(signature) };
+  return client.sendSigned("sendReservationCancel", signed);
 }

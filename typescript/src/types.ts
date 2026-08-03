@@ -706,6 +706,31 @@ export interface SignedReservationRequest {
 }
 
 /**
+ * A taker giving up a reservation before its validation window runs out,
+ * returning the merchant's liquidity to the advertisement immediately.
+ *
+ * Only the requester may send one, and the node checks that against the
+ * stored reservation rather than against this payload: `requester` must
+ * equal the reservation's own requester, and the signature must verify
+ * under the public key that reservation already carries. Nothing here
+ * supplies a key, which is the point — a cancellation that named its own
+ * verifying key would let anyone who can name a reservation cancel it.
+ *
+ * Legal only from `EscrowLocked`. There is no merchant-side counterpart:
+ * a merchant who wants their liquidity back waits out the window.
+ */
+export interface ReservationCancel {
+  id: string;
+  requester: Base58PeerId;
+  timestamp: TimestampMs;
+}
+
+export interface SignedReservationCancel {
+  cancel: ReservationCancel;
+  signature: Base58Signature;
+}
+
+/**
  * A reservation in full, as one of its own parties reads it back through
  * `getMyReservations`.
  *
@@ -799,6 +824,59 @@ export interface Settlement {
   payment_discrepancy: PaymentDiscrepancy | null;
   created_at: TimestampMs;
   updated_at: TimestampMs;
+}
+
+/**
+ * The merchant's "I cannot find this payment" — the other half of an
+ * approval, and the alternative to opening a dispute over it.
+ *
+ * Legal only from `PaymentSubmitted` and only under the seller on file.
+ * Both fields describing the problem are required and they are not
+ * redundant: `reason` is prose for a human reading the trade, and
+ * `discrepancy` is the one reputation counts. Reaching for `Other` when a
+ * named kind applies costs the counterparty a legible record.
+ *
+ * A rejection is a claim, not an adjudication. A buyer who really did pay
+ * can still open a dispute afterwards — `Rejected` is not a state the
+ * dispute path refuses.
+ */
+export interface SettlementRejected {
+  settlement_id: string;
+  seller: Base58PeerId;
+  /** Free text for a human. Never parsed. */
+  reason: string;
+  discrepancy: PaymentDiscrepancy;
+  timestamp: TimestampMs;
+}
+
+export interface SignedSettlementRejected {
+  action: SettlementRejected;
+  signature: Base58Signature;
+}
+
+/**
+ * Either party walking away from a settlement, before any payment is
+ * declared.
+ *
+ * `canceller` must be the settlement's own buyer or seller — the node
+ * picks which public key to verify against by matching that field against
+ * the stored record, so a third party naming themselves canceller is
+ * refused before any signature is examined.
+ *
+ * Legal only from `AwaitingPayment`, and that restriction is the security
+ * property: once the buyer has declared payment a merchant cannot make
+ * the settlement disappear. The gap it cannot close is between a buyer
+ * wiring fiat and that buyer declaring it, so declare first.
+ */
+export interface SettlementCancelled {
+  settlement_id: string;
+  canceller: Base58PeerId;
+  timestamp: TimestampMs;
+}
+
+export interface SignedSettlementCancelled {
+  action: SettlementCancelled;
+  signature: Base58Signature;
 }
 
 /**

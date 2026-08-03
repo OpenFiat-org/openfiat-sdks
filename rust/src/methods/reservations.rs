@@ -31,7 +31,9 @@ use crate::client::{Client, IdParams};
 use crate::error::Result;
 use crate::methods::redaction::PublicReservation;
 use openfiat_crypto::Keypair;
-use openfiat_reservations::events::{ReservationRequest, SignedReservationRequest};
+use openfiat_reservations::events::{
+    ReservationCancel, ReservationRequest, SignedReservationCancel, SignedReservationRequest,
+};
 use openfiat_reservations::{Reservation, ReservationId};
 
 /// Domain separator for `getMyReservations`, transcribed from
@@ -72,5 +74,29 @@ impl Client {
         let signed = SignedReservationRequest::sign(request, keypair);
         let id: String = self.send_signed("sendReservationRequest", &signed).await?;
         Ok(ReservationId::new(id))
+    }
+
+    /// Give up a reservation and return the merchant's liquidity to their
+    /// advertisement now, instead of thirty minutes from now when the
+    /// node's expiry sweep would have done it anyway.
+    ///
+    /// `keypair` must be the reservation's own requester. The node
+    /// verifies against the public key the reservation already carries,
+    /// never against one supplied in the payload, so naming somebody
+    /// else's reservation achieves nothing. Legal only from
+    /// `EscrowLocked`; an already-cancelled or expired reservation
+    /// returns an application error rather than succeeding quietly.
+    ///
+    /// This cancels the reservation and nothing else. If a settlement has
+    /// already been raised against it, cancel that separately with
+    /// [`Client::send_settlement_cancelled`] — the two records are not
+    /// linked, so cancelling one leaves the other running.
+    pub async fn send_reservation_cancel(
+        &self,
+        cancel: ReservationCancel,
+        keypair: &Keypair,
+    ) -> Result<()> {
+        let signed = SignedReservationCancel::sign(cancel, keypair);
+        self.send_signed("sendReservationCancel", &signed).await
     }
 }
