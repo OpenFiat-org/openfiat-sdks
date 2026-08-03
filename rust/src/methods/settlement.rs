@@ -5,8 +5,8 @@ use crate::error::Result;
 use crate::methods::redaction::PublicSettlement;
 use openfiat_crypto::Keypair;
 use openfiat_settlement::events::{
-    PaymentSubmitted, SettlementApproved, SettlementCancelled, SettlementInitiate,
-    SettlementRejected, SignedPaymentSubmitted, SignedSettlementApproved,
+    PaymentReversed, PaymentSubmitted, SettlementApproved, SettlementCancelled, SettlementInitiate,
+    SettlementRejected, SignedPaymentReversed, SignedPaymentSubmitted, SignedSettlementApproved,
     SignedSettlementCancelled, SignedSettlementInitiate, SignedSettlementRejected,
 };
 use openfiat_settlement::{Settlement, SettlementId};
@@ -60,6 +60,31 @@ impl Client {
     ) -> Result<()> {
         let signed = SignedPaymentSubmitted::sign(payment, keypair);
         self.send_signed("sendPaymentSubmitted", &signed).await
+    }
+
+    /// The buyer taking "I paid" back, for a declaration made in error.
+    ///
+    /// `keypair` must be the settlement's buyer, and the settlement must
+    /// still be in `PaymentSubmitted` — once the merchant has approved or
+    /// rejected it this is refused, so it can never undo a decision
+    /// already taken. It returns the settlement to `AwaitingPayment` and
+    /// clears both `payment_reference` and `payment_submitted_at`, so the
+    /// buyer is not credited with a payment they withdrew and the
+    /// merchant is not faulted for failing to answer one.
+    ///
+    /// Confirm with the user before calling this. Returning to
+    /// `AwaitingPayment` re-arms [`Client::send_settlement_cancelled`]
+    /// for either party, so a buyer whose fiat has genuinely left their
+    /// account and who reverses anyway has handed the merchant a window
+    /// to cancel the trade out from under the money. Reverse a mis-click;
+    /// for a real payment, open a dispute.
+    pub async fn send_payment_reversed(
+        &self,
+        reversed: PaymentReversed,
+        keypair: &Keypair,
+    ) -> Result<()> {
+        let signed = SignedPaymentReversed::sign(reversed, keypair);
+        self.send_signed("sendPaymentReversed", &signed).await
     }
 
     pub async fn send_settlement_approved(

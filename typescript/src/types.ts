@@ -827,6 +827,96 @@ export interface Settlement {
 }
 
 /**
+ * Opening a settlement against a reservation the taker already holds.
+ *
+ * Signed by the buyer, whose successful reservation is what begins
+ * settlement (OFS-2300 §1), and self-consistency verified: `buyer` must
+ * be the peer id `buyer_public_key` derives to, and the signature must be
+ * that key's.
+ *
+ * Both parties' public keys travel in the record because every later
+ * event on this settlement is verified against the key stored here rather
+ * than one supplied at the time — get `seller_public_key` wrong and the
+ * merchant can never approve, reject or cancel their own trade.
+ *
+ * The node does not check that `reservation_id` names a reservation that
+ * exists, or that this settlement's amount matches it. Send the
+ * reservation's own id and its own amount.
+ */
+export interface SettlementInitiate {
+  id: string;
+  reservation_id: string;
+  buyer: Base58PeerId;
+  buyer_public_key: Base58PublicKey;
+  seller: Base58PeerId;
+  seller_public_key: Base58PublicKey;
+  amount: Amount;
+  timestamp: TimestampMs;
+}
+
+export interface SignedSettlementInitiate {
+  initiate: SettlementInitiate;
+  signature: Base58Signature;
+}
+
+/**
+ * The buyer's "I paid" (OFS-2300 §9). Legal only from `AwaitingPayment`
+ * and only under the buyer on file.
+ *
+ * Send it *before* the money leaves, not after it lands. Declaring
+ * payment is what stops the merchant cancelling the settlement, and the
+ * gap between a real transfer and its declaration is the one window the
+ * protocol cannot protect.
+ *
+ * `payment_reference` is free text the merchant will go looking for in
+ * their own account — a bank reference, an M-Pesa code. `null` is
+ * accepted, and makes a rejection for `WrongReference` considerably
+ * harder to argue with.
+ */
+export interface PaymentSubmitted {
+  settlement_id: string;
+  buyer: Base58PeerId;
+  payment_reference: string | null;
+  timestamp: TimestampMs;
+}
+
+export interface SignedPaymentSubmitted {
+  action: PaymentSubmitted;
+  signature: Base58Signature;
+}
+
+/**
+ * The buyer taking "I paid" back (OFS-2300 §10) — the counterpart to
+ * {@link PaymentSubmitted} and the buyer-side mirror of
+ * {@link SettlementRejected}.
+ *
+ * Legal only from `PaymentSubmitted` and only under the buyer on file, so
+ * it cannot undo a decision already taken: once the merchant has approved
+ * or rejected, the settlement has left that state. It returns the
+ * settlement to `AwaitingPayment`, clears `payment_reference`, and clears
+ * `payment_submitted_at` — which the node's reputation view reads as both
+ * "this buyer made a payment" and "this merchant is on the clock to
+ * answer one", so withdrawing retracts both.
+ *
+ * The edge to confirm with a user before sending: returning to
+ * `AwaitingPayment` re-arms {@link SettlementCancelled} for either party.
+ * A buyer whose fiat genuinely left their account and who reverses anyway
+ * has handed the merchant a window to cancel the trade out from under the
+ * money. This is for a declaration made in error; for a real payment the
+ * buyer is unhappy about, the answer is a dispute.
+ */
+export interface PaymentReversed {
+  settlement_id: string;
+  buyer: Base58PeerId;
+  timestamp: TimestampMs;
+}
+
+export interface SignedPaymentReversed {
+  action: PaymentReversed;
+  signature: Base58Signature;
+}
+
+/**
  * The merchant's "I cannot find this payment" — the other half of an
  * approval, and the alternative to opening a dispute over it.
  *

@@ -3,11 +3,17 @@ import type { Client } from "../client.js";
 import { type Keypair, sign } from "../crypto.js";
 import {
   toBase58,
+  type PaymentReversed,
+  type PaymentSubmitted,
   type PublicSettlement,
   type Settlement,
   type SettlementCancelled,
+  type SettlementInitiate,
   type SettlementRejected,
+  type SignedPaymentReversed,
+  type SignedPaymentSubmitted,
   type SignedSettlementCancelled,
+  type SignedSettlementInitiate,
   type SignedSettlementRejected,
 } from "../types.js";
 import { walletProof } from "./wallet.js";
@@ -49,6 +55,84 @@ export async function getSettlements(client: Client): Promise<PublicSettlement[]
  */
 export async function getMySettlements(client: Client, keypair: Keypair): Promise<Settlement[]> {
   return client.call("getMySettlements", await walletProof(client, keypair, CHALLENGE_DOMAIN));
+}
+
+/**
+ * Signs `initiate` with `keypair` and submits it, opening a settlement
+ * against a reservation the taker already holds. Returns the new
+ * settlement's ID.
+ *
+ * `keypair` must be the buyer named in `initiate` — the event is
+ * self-consistency verified, so a `buyer` that is not the peer id
+ * `buyer_public_key` derives to is refused before the signature is even
+ * checked.
+ *
+ * Get `seller_public_key` right. Every later event on this settlement is
+ * verified against the keys stored by this one, so a wrong seller key
+ * leaves a settlement the merchant can never approve, reject or cancel.
+ */
+export async function sendSettlementInitiate(
+  client: Client,
+  initiate: SettlementInitiate,
+  keypair: Keypair,
+): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(initiate));
+  const signature = await sign(keypair, bytes);
+  const signed: SignedSettlementInitiate = { initiate, signature: toBase58(signature) };
+  return client.sendSigned("sendSettlementInitiate", signed);
+}
+
+/**
+ * Signs `payment` with `keypair` and submits it — the buyer's "I paid".
+ *
+ * `keypair` must be the settlement's buyer, and the settlement must be in
+ * `AwaitingPayment`.
+ *
+ * Send this *before* the money leaves, not after it lands. The
+ * declaration is what stops either party cancelling the settlement, and
+ * the interval between a real transfer and its declaration is the one
+ * window nothing in the protocol can protect. It costs a buyer nothing to
+ * declare early and can cost them the whole transfer to declare late.
+ */
+export async function sendPaymentSubmitted(
+  client: Client,
+  payment: PaymentSubmitted,
+  keypair: Keypair,
+): Promise<void> {
+  const bytes = new TextEncoder().encode(JSON.stringify(payment));
+  const signature = await sign(keypair, bytes);
+  const signed: SignedPaymentSubmitted = { action: payment, signature: toBase58(signature) };
+  return client.sendSigned("sendPaymentSubmitted", signed);
+}
+
+/**
+ * Signs `reversed` with `keypair` and submits it — the buyer taking "I
+ * paid" back, for a declaration made in error.
+ *
+ * `keypair` must be the settlement's buyer, and the settlement must still
+ * be in `PaymentSubmitted`: once the merchant has approved or rejected,
+ * this is refused, so it can never be used to escape a decision already
+ * taken. It returns the settlement to `AwaitingPayment` and clears both
+ * `payment_reference` and `payment_submitted_at`, so the buyer is not
+ * credited with a payment they withdrew and the merchant is not faulted
+ * for failing to answer it.
+ *
+ * Confirm with the user before calling this. Returning to
+ * `AwaitingPayment` re-arms {@link sendSettlementCancelled} for either
+ * party, so a buyer whose fiat has genuinely left their account and who
+ * reverses anyway has handed the merchant a window to cancel the trade
+ * out from under the money. Reverse a mis-click; for a real payment, open
+ * a dispute.
+ */
+export async function sendPaymentReversed(
+  client: Client,
+  reversed: PaymentReversed,
+  keypair: Keypair,
+): Promise<void> {
+  const bytes = new TextEncoder().encode(JSON.stringify(reversed));
+  const signature = await sign(keypair, bytes);
+  const signed: SignedPaymentReversed = { action: reversed, signature: toBase58(signature) };
+  return client.sendSigned("sendPaymentReversed", signed);
 }
 
 /**
