@@ -13,6 +13,8 @@ export interface JsonRpcResponseError {
   data?: {
     ofsErrorCode?: number;
     ofsErrorName?: string;
+    /** OFS-8000 §16's retryability judgement, as the node reports it. */
+    ofsRetryable?: boolean;
   };
 }
 

@@ -76,6 +76,7 @@ export class Client {
           body.error.message,
           body.error.data?.ofsErrorCode,
           body.error.data?.ofsErrorName,
+          body.error.data?.ofsRetryable,
         );
       }
       throw new JsonRpcError(body.error.code, body.error.message);

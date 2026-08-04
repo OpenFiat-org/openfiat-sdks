@@ -28,6 +28,20 @@ export class ApplicationError extends Error {
     message: string,
     public readonly ofsErrorCode?: number,
     public readonly ofsErrorName?: string,
+    /**
+     * The node's report of OFS-8000 §16's judgement for this code: whether
+     * the identical request sent again can reach a different outcome.
+     *
+     * Read it, do not obey it. This SDK never retries anything on its own,
+     * and a `true` here is not an instruction to loop — it is the node
+     * saying a caller who *wants* to try again is not wasting the attempt.
+     * `false` is the load-bearing direction: it means stop asking.
+     *
+     * `undefined` when the node predates the field, which is the whole
+     * reason it is optional. Treat that as "not stated" rather than as
+     * `false`, or an older node turns every transient failure permanent.
+     */
+    public readonly ofsRetryable?: boolean,
   ) {
     super(ofsErrorName ? `${ofsErrorName}: ${message}` : message);
     this.name = "ApplicationError";

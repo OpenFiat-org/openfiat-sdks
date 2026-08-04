@@ -99,13 +99,11 @@ impl Client {
         if let Some(error_value) = object.get("error") {
             let error: ResponseError = serde_json::from_value(error_value.clone())?;
             return Err(if error.code == APPLICATION_ERROR {
-                let data = error.data.unwrap_or(crate::jsonrpc::ErrorData {
-                    ofs_error_code: None,
-                    ofs_error_name: None,
-                });
+                let data = error.data.unwrap_or_default();
                 Error::Application {
                     ofs_error_code: data.ofs_error_code,
                     ofs_error_name: data.ofs_error_name,
+                    ofs_retryable: data.ofs_retryable,
                     message: error.message,
                 }
             } else {

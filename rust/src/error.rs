@@ -23,6 +23,20 @@ pub enum Error {
     Application {
         ofs_error_code: Option<u32>,
         ofs_error_name: Option<String>,
+        /// The node's report of OFS-8000 §16's judgement for this code:
+        /// whether the identical request sent again can reach a different
+        /// outcome.
+        ///
+        /// Read it, do not obey it. This SDK never retries anything on its
+        /// own, and a `Some(true)` is not an instruction to loop — it is
+        /// the node saying a caller who *wants* to try again is not
+        /// wasting the attempt. `Some(false)` is the load-bearing
+        /// direction: it means stop asking.
+        ///
+        /// `None` when the node predates the field. Treat that as "not
+        /// stated" rather than as `false`, or an older node turns every
+        /// transient failure permanent.
+        ofs_retryable: Option<bool>,
         message: String,
     },
 }
