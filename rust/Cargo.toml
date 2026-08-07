@@ -41,7 +41,7 @@ openfiat-sessions = "0.1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-base64 = "0.22"
+base64 = "0.23"
 # Solana transaction construction (OFS-4300's sendTransaction). Pinned to
 # the same versions verified to compile together in openfiat-core's own
 # crates/chain — the 4.x solana-client/-transaction line has an unresolved
