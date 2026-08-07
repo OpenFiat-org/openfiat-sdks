@@ -74,7 +74,7 @@
     "@solana/web3.js": "^1.98.4"
   },
   "devDependencies": {
-    "@eslint/js": "^9.13.0",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^26.1.1",
     "eslint": "^10.8.0",
     "tsup": "^8.3.0",
