@@ -60,6 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         supported_ofs: vec![1500, 6000],
         region: None,
         capabilities: vec!["Webhook".to_string()],
+        branding: None,
         pricing: None,
         payout_wallet: None,
         timestamp: Timestamp::now(),

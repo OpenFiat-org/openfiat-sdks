@@ -23,6 +23,7 @@ use openfiat_sdk::{Client, ClientConfig};
 use openfiat_sessions::SessionId;
 use openfiat_sessions::events::{SessionCreate, SessionRevoke};
 use openfiat_storage::mem::MemoryStore;
+use openfiat_taxonomy::PaymentMethodRef;
 use openfiat_types::{
     Amount, FiatCurrency, NotificationChannel, PeerId, ServiceId, ServiceType, Timestamp,
 };
@@ -136,6 +137,7 @@ async fn a_signed_proposal_is_submitted_and_readable_back() {
         category: ProposalCategory::Protocol,
         author,
         author_public_key: keypair.public_key(),
+        onchain_proposal_id: None,
         timestamp: Timestamp::now(),
     };
 
@@ -238,7 +240,7 @@ async fn a_trading_bots_reservation_locks_escrow_against_a_published_advertiseme
         pricing: PricingModel::Fixed {
             price: advertised_price,
         },
-        payment_methods: vec!["M-Pesa".to_string()],
+        payment_methods: vec![PaymentMethodRef::builtin("mpesa-kenya").unwrap()],
         timestamp: Timestamp::now(),
     };
     let ad_id = client
@@ -318,6 +320,7 @@ async fn a_notification_providers_delivery_report_is_readable_back_for_the_walle
                 supported_ofs: vec![1500, 6000],
                 region: None,
                 capabilities: vec!["Webhook".to_string()],
+                branding: None,
                 pricing: None,
                 payout_wallet: None,
                 timestamp: Timestamp::now(),

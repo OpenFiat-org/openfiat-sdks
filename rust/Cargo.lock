@@ -3055,13 +3055,14 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 [[package]]
 name = "openfiat-advertisements"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
  "openfiat-network",
  "openfiat-serialization",
  "openfiat-storage",
+ "openfiat-taxonomy",
  "openfiat-types",
  "serde",
 ]
@@ -3069,7 +3070,7 @@ dependencies = [
 [[package]]
 name = "openfiat-api"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "axum",
  "openfiat-rpc",
@@ -3080,7 +3081,7 @@ dependencies = [
 [[package]]
 name = "openfiat-chain"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "async-trait",
  "bincode",
@@ -3104,7 +3105,7 @@ dependencies = [
 [[package]]
 name = "openfiat-content"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "async-trait",
  "futures",
@@ -3127,7 +3128,7 @@ dependencies = [
 [[package]]
 name = "openfiat-crypto"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "bs58",
  "chacha20poly1305",
@@ -3142,7 +3143,7 @@ dependencies = [
 [[package]]
 name = "openfiat-discovery"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "libp2p",
  "openfiat-crypto",
@@ -3158,7 +3159,7 @@ dependencies = [
 [[package]]
 name = "openfiat-disputes"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3173,7 +3174,7 @@ dependencies = [
 [[package]]
 name = "openfiat-gossip"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "libp2p",
  "openfiat-crypto",
@@ -3187,7 +3188,7 @@ dependencies = [
 [[package]]
 name = "openfiat-governance"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3196,12 +3197,13 @@ dependencies = [
  "openfiat-storage",
  "openfiat-types",
  "serde",
+ "solana-pubkey 4.3.0",
 ]
 
 [[package]]
 name = "openfiat-identity"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3215,12 +3217,12 @@ dependencies = [
 [[package]]
 name = "openfiat-metrics"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 
 [[package]]
 name = "openfiat-network"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "async-trait",
  "futures",
@@ -3239,7 +3241,7 @@ dependencies = [
 [[package]]
 name = "openfiat-notifications"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "async-trait",
  "openfiat-crypto",
@@ -3256,7 +3258,7 @@ dependencies = [
 [[package]]
 name = "openfiat-oracles"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3271,7 +3273,7 @@ dependencies = [
 [[package]]
 name = "openfiat-registry"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3286,7 +3288,7 @@ dependencies = [
 [[package]]
 name = "openfiat-reputation"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-disputes",
  "openfiat-reservations",
@@ -3299,7 +3301,7 @@ dependencies = [
 [[package]]
 name = "openfiat-reservations"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-advertisements",
  "openfiat-crypto",
@@ -3312,9 +3314,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "openfiat-reviews"
+version = "0.1.0"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
+dependencies = [
+ "openfiat-crypto",
+ "openfiat-network",
+ "openfiat-serialization",
+ "openfiat-settlement",
+ "openfiat-storage",
+ "openfiat-types",
+ "serde",
+]
+
+[[package]]
 name = "openfiat-rewards"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-types",
  "serde",
@@ -3323,7 +3339,7 @@ dependencies = [
 [[package]]
 name = "openfiat-risk"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3338,7 +3354,7 @@ dependencies = [
 [[package]]
 name = "openfiat-rpc"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -3361,6 +3377,7 @@ dependencies = [
  "openfiat-registry",
  "openfiat-reputation",
  "openfiat-reservations",
+ "openfiat-reviews",
  "openfiat-rewards",
  "openfiat-risk",
  "openfiat-serialization",
@@ -3368,7 +3385,9 @@ dependencies = [
  "openfiat-settlement",
  "openfiat-snapshot",
  "openfiat-storage",
+ "openfiat-taxonomy",
  "openfiat-trade",
+ "openfiat-tradechannel",
  "openfiat-types",
  "reqwest",
  "serde",
@@ -3408,6 +3427,7 @@ dependencies = [
  "openfiat-settlement",
  "openfiat-snapshot",
  "openfiat-storage",
+ "openfiat-taxonomy",
  "openfiat-trade",
  "openfiat-types",
  "openfiat-wallet",
@@ -3432,7 +3452,7 @@ dependencies = [
 [[package]]
 name = "openfiat-serialization"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-types",
  "postcard",
@@ -3443,7 +3463,7 @@ dependencies = [
 [[package]]
 name = "openfiat-sessions"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3457,7 +3477,7 @@ dependencies = [
 [[package]]
 name = "openfiat-settlement"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3472,7 +3492,7 @@ dependencies = [
 [[package]]
 name = "openfiat-snapshot"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "axum",
  "bs58",
@@ -3486,6 +3506,7 @@ dependencies = [
  "openfiat-types",
  "reqwest",
  "serde",
+ "solana-pubkey 4.3.0",
  "tar",
  "tokio",
  "tokio-util",
@@ -3494,14 +3515,26 @@ dependencies = [
 [[package]]
 name = "openfiat-storage"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
+
+[[package]]
+name = "openfiat-taxonomy"
+version = "0.1.0"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
+dependencies = [
+ "openfiat-crypto",
+ "openfiat-network",
+ "openfiat-serialization",
+ "openfiat-storage",
+ "openfiat-types",
+ "serde",
+]
 
 [[package]]
 name = "openfiat-trade"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
- "openfiat-disputes",
  "openfiat-reservations",
  "openfiat-settlement",
  "openfiat-storage",
@@ -3510,9 +3543,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "openfiat-tradechannel"
+version = "0.1.0"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
+dependencies = [
+ "chacha20poly1305",
+ "openfiat-crypto",
+ "openfiat-disputes",
+ "openfiat-gossip",
+ "openfiat-network",
+ "openfiat-serialization",
+ "openfiat-settlement",
+ "openfiat-storage",
+ "openfiat-types",
+ "rand 0.10.2",
+ "serde",
+]
+
+[[package]]
 name = "openfiat-types"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "bs58",
  "serde",
@@ -3521,7 +3572,7 @@ dependencies = [
 [[package]]
 name = "openfiat-wallet"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=e269c9c7fd854fb7eae442260cb3611398ff5ea1#e269c9c7fd854fb7eae442260cb3611398ff5ea1"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=5358164530fe17adf621dc0d48eeb6d4a8cdd992#5358164530fe17adf621dc0d48eeb6d4a8cdd992"
 dependencies = [
  "bs58",
  "openfiat-crypto",

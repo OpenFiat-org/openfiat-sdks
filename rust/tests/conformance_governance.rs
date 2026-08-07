@@ -157,6 +157,7 @@ async fn a_real_vote_is_weighed_by_its_real_on_chain_stake_not_its_self_report()
                 category: ProposalCategory::Protocol,
                 author: proposal_author_peer,
                 author_public_key: proposal_author.public_key(),
+                onchain_proposal_id: None,
                 timestamp: Timestamp::now(),
             },
             &proposal_author,

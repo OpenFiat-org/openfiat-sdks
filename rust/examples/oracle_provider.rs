@@ -43,6 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         supported_ofs: vec![1500, 7000],
         region: Some("Kenya".to_string()),
         capabilities: vec!["USDC/KES".to_string()],
+        branding: None,
         pricing: None,
         payout_wallet: None,
         timestamp: Timestamp::now(),

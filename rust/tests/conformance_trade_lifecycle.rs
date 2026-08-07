@@ -58,6 +58,7 @@ use openfiat_sdk::onchain::escrow;
 use openfiat_sdk::{Client, ClientConfig};
 use openfiat_settlement::SettlementId;
 use openfiat_settlement::events::{PaymentSubmitted, SettlementApproved, SettlementInitiate};
+use openfiat_taxonomy::PaymentMethodRef;
 use openfiat_types::{Amount, FiatCurrency, Timestamp};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_keypair::Keypair as SolanaKeypair;
@@ -218,7 +219,7 @@ async fn a_trade_completes_end_to_end_with_a_real_on_chain_escrow_release() {
         pricing: PricingModel::Fixed {
             price: advertised_price,
         },
-        payment_methods: vec!["GCash".to_string()],
+        payment_methods: vec![PaymentMethodRef::builtin("gcash").unwrap()],
         timestamp: Timestamp::now(),
     };
     client

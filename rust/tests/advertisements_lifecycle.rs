@@ -28,6 +28,7 @@ use openfiat_advertisements::record::{AdvertisementStatus, PricingModel};
 use openfiat_network::identity::peer_id_from_public_key;
 use openfiat_sdk::wallet::Keypair;
 use openfiat_sdk::{Client, ClientConfig};
+use openfiat_taxonomy::PaymentMethodRef;
 use openfiat_types::{Amount, Timestamp};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -236,7 +237,10 @@ async fn a_terms_update_is_submitted_with_a_signature_that_verifies_over_its_jso
         merchant: peer_id_from_public_key(&owner.public_key()).unwrap(),
         min_trade: Amount::new(5_000_000, 6),
         max_trade: Amount::new(500_000_000, 6),
-        payment_methods: vec!["Bank Transfer".to_string(), "M-Pesa".to_string()],
+        payment_methods: vec![
+            PaymentMethodRef::builtin("bank-transfer").unwrap(),
+            PaymentMethodRef::builtin("mpesa-kenya").unwrap(),
+        ],
         timestamp: Timestamp::from_millis(1_000),
     };
 

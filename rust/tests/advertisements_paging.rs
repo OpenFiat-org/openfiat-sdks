@@ -29,6 +29,7 @@ use openfiat_sdk::methods::advertisements::{
 };
 use openfiat_sdk::wallet::Keypair;
 use openfiat_sdk::{Client, ClientConfig};
+use openfiat_taxonomy::PaymentMethodRef;
 use openfiat_types::FiatCurrency;
 use serde_json::{Value, json};
 use std::collections::VecDeque;
@@ -108,7 +109,7 @@ fn row(id: &str) -> Value {
         pricing: PricingModel::Fixed {
             price: openfiat_types::Amount::new(12_950, 2),
         },
-        payment_methods: vec!["M-Pesa".to_string()],
+        payment_methods: vec![PaymentMethodRef::builtin("mpesa-kenya").unwrap()],
         status: AdvertisementStatus::Active,
         created_at: openfiat_types::Timestamp::from_millis(1),
         updated_at: openfiat_types::Timestamp::from_millis(1),

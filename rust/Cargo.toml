@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "Official Rust SDK for the OpenFiat protocol."
-repository = "https://github.com/OpenFiat-org/openfiat-sdk-rust"
+repository = "https://github.com/OpenFiat-org/openfiat-sdks"
 readme = "README.md"
 
 [lib]
@@ -15,28 +15,29 @@ path = "src/lib.rs"
 # Reused directly from openfiat-core rather than redefined here, so the
 # SDK's request/response shapes can never drift from what a real node
 # actually runs — the same reasoning as this workspace's OpenRPC
-# self-description. Pinned to an exact commit since both repos are
-# pre-1.0 and co-evolving (the same pattern openfiat-apps' explorer/
-# indexer already uses).
-openfiat-types = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-types" }
-openfiat-crypto = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-crypto" }
-openfiat-network = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-network" }
-openfiat-serialization = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-serialization" }
-openfiat-wallet = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-wallet" }
-openfiat-advertisements = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-advertisements" }
-openfiat-reservations = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-reservations" }
-openfiat-settlement = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-settlement" }
-openfiat-trade = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-trade" }
-openfiat-disputes = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-disputes" }
-openfiat-identity = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-identity" }
-openfiat-reputation = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-reputation" }
-openfiat-governance = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-governance" }
-openfiat-registry = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-registry" }
-openfiat-notifications = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-notifications" }
-openfiat-oracles = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-oracles" }
-openfiat-risk = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-risk" }
-openfiat-snapshot = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-snapshot" }
-openfiat-sessions = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-sessions" }
+# self-description. Depended on by crates.io version (both repos are
+# pre-1.0, so 0.1.x is an exact match); the [patch.crates-io] section at
+# the bottom pins this crate's own build to the exact openfiat-core commit
+# that 0.1.0 was cut from, matching the node-internal dev-dependencies.
+openfiat-types = "0.1.0"
+openfiat-crypto = "0.1.0"
+openfiat-network = "0.1.0"
+openfiat-serialization = "0.1.0"
+openfiat-wallet = "0.1.0"
+openfiat-advertisements = "0.1.0"
+openfiat-reservations = "0.1.0"
+openfiat-settlement = "0.1.0"
+openfiat-trade = "0.1.0"
+openfiat-disputes = "0.1.0"
+openfiat-identity = "0.1.0"
+openfiat-reputation = "0.1.0"
+openfiat-governance = "0.1.0"
+openfiat-registry = "0.1.0"
+openfiat-notifications = "0.1.0"
+openfiat-oracles = "0.1.0"
+openfiat-risk = "0.1.0"
+openfiat-snapshot = "0.1.0"
+openfiat-sessions = "0.1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -71,13 +72,17 @@ borsh = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+# Test-only: lets the integration tests name payment-method rails
+# (`PaymentMethodRef::builtin`) when building advertisements. Not a runtime
+# dependency of the SDK's public API.
+openfiat-taxonomy = "0.1.0"
 # Test-only: spins up the same rpc+api server openfiat-cli runs, so the
 # integration test below exercises this SDK against a real running node
 # process's actual HTTP surface, not a mock.
-openfiat-rpc = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-rpc" }
-openfiat-api = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-api" }
-openfiat-metrics = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-metrics" }
-openfiat-storage = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-storage" }
+openfiat-rpc = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992", package = "openfiat-rpc" }
+openfiat-api = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992", package = "openfiat-api" }
+openfiat-metrics = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992", package = "openfiat-metrics" }
+openfiat-storage = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992", package = "openfiat-storage" }
 axum = "0.8.9"
 # Test-only: talks directly to a real `solana-test-validator` for
 # `tests/onchain_live_validator.rs` — proves `onchain::staking`'s
@@ -92,8 +97,38 @@ solana-commitment-config = "3"
 # `RpcConnected` mode against a local `solana-test-validator`, for
 # `tests/conformance_*.rs` (the full off-chain-protocol + real-on-chain-
 # program proofs — see that module's own doc comment).
-openfiat-chain = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "e269c9c7fd854fb7eae442260cb3611398ff5ea1", package = "openfiat-chain" }
+openfiat-chain = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992", package = "openfiat-chain" }
 # Test-only: `tests/conformance_dispute.rs` builds real on-chain
 # `commit_dispute_vote` commitments, matching `reveal_dispute_vote`'s
 # own on-chain SHA256(outcome ++ salt) verification exactly.
 sha2 = "0.10"
+
+# The published crate depends on these by crates.io version (above), which
+# is what downstream users get. For this crate's OWN build and tests, though,
+# resolve them from the same openfiat-core git tree the node-internal dev-
+# dependencies (rpc/api/metrics/chain, not on crates.io) are built from, so a
+# test never mixes a crates.io openfiat-types with a git one. cargo strips
+# [patch] from the published manifest, so consumers never see this.
+[patch.crates-io]
+openfiat-types = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-crypto = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-serialization = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-network = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-storage = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-gossip = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-taxonomy = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-advertisements = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-reservations = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-settlement = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-disputes = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-governance = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-identity = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-registry = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-notifications = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-oracles = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-reputation = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-risk = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-sessions = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-snapshot = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-trade = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }
+openfiat-wallet = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = "5358164530fe17adf621dc0d48eeb6d4a8cdd992" }

@@ -20,6 +20,7 @@ use openfiat_reservations::ReservationId;
 use openfiat_reservations::events::ReservationRequest;
 use openfiat_sdk::wallet::Keypair;
 use openfiat_sdk::{Client, ClientConfig};
+use openfiat_taxonomy::PaymentMethodRef;
 use openfiat_types::{Amount, FiatCurrency, PeerId, Timestamp};
 
 fn peer_id(keypair: &Keypair) -> PeerId {
@@ -64,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         pricing: PricingModel::Fixed {
             price: advertised_price,
         },
-        payment_methods: vec!["M-Pesa".to_string()],
+        payment_methods: vec![PaymentMethodRef::builtin("mpesa-kenya").unwrap()],
         timestamp: Timestamp::now(),
     };
     let ad_id = client.send_advertisement_create(create, &merchant).await?;
