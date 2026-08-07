@@ -91,7 +91,7 @@ axum = "0.8.9"
 # `openfiat-core/crates/chain`'s own `solana-client` dependency (the 4.x
 # line has an unresolved internal wincode conflict, per this crate's own
 # `solana-transaction`/`solana-message` comment above).
-solana-client = "3"
+solana-client = "4"
 solana-commitment-config = "3"
 # Test-only: `NodeChainMode`/`NetworkConfig` for spawning a real node in
 # `RpcConnected` mode against a local `solana-test-validator`, for
