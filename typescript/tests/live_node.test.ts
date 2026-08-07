@@ -150,7 +150,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
       max_trade: { base_units: 50_000, decimals: 2 },
       initial_liquidity: { base_units: 200_000, decimals: 2 },
       pricing: { Fixed: { price: { base_units: 12_950, decimals: 2 } } },
-      payment_methods: ["M-Pesa"],
+      payment_methods: ["builtin:mpesa-kenya"],
       timestamp: Date.now(),
     };
     const adId = await advertisements.sendAdvertisementCreate(client, create, merchant);
@@ -199,7 +199,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
       max_trade: { base_units: 50_000, decimals: 2 },
       initial_liquidity: { base_units: 200_000, decimals: 2 },
       pricing: { Fixed: { price: { base_units: 12_950, decimals: 2 } } },
-      payment_methods: ["M-Pesa"],
+      payment_methods: ["builtin:mpesa-kenya"],
       timestamp: Date.now(),
     });
 
@@ -258,7 +258,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
       max_trade: { base_units: 50_000, decimals: 2 },
       initial_liquidity: { base_units: 200_000, decimals: 2 },
       pricing: { Fixed: { price: { base_units: 12_950, decimals: 2 } } },
-      payment_methods: ["M-Pesa"],
+      payment_methods: ["builtin:mpesa-kenya"],
       timestamp: Date.now(),
     };
     const adId = await advertisements.sendAdvertisementCreate(client, create, merchant);
@@ -322,7 +322,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
         max_trade: { base_units: 50_000, decimals: 2 },
         initial_liquidity: { base_units: 200_000, decimals: 2 },
         pricing: { Fixed: { price: { base_units: 12_950, decimals: 2 } } },
-        payment_methods: ["M-Pesa"],
+        payment_methods: ["builtin:mpesa-kenya"],
         timestamp: Date.now(),
       },
       merchant,
@@ -410,7 +410,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
           max_trade: { base_units: 50_000, decimals: 2 },
           initial_liquidity: { base_units: 200_000, decimals: 2 },
           pricing: { Fixed: { price: { base_units: 12_950, decimals: 2 } } },
-          payment_methods: ["M-Pesa"],
+          payment_methods: ["builtin:mpesa-kenya"],
           timestamp: Date.now(),
         },
         merchant,
@@ -513,7 +513,7 @@ describe.skipIf(!endpoint)("against a real node", () => {
       max_trade: { base_units: 50_000, decimals: 2 },
       initial_liquidity: { base_units: 200_000, decimals: 2 },
       pricing: { Fixed: { price: { base_units: 12_950, decimals: 2 } } },
-      payment_methods: ["M-Pesa"],
+      payment_methods: ["builtin:mpesa-kenya"],
       timestamp: Date.now(),
     };
     const adId = await advertisements.sendAdvertisementCreate(client, create, merchant);
