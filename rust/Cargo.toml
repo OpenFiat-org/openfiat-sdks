@@ -101,7 +101,7 @@ openfiat-chain = { git = "https://github.com/OpenFiat-org/openfiat-core", rev = 
 # Test-only: `tests/conformance_dispute.rs` builds real on-chain
 # `commit_dispute_vote` commitments, matching `reveal_dispute_vote`'s
 # own on-chain SHA256(outcome ++ salt) verification exactly.
-sha2 = "0.10"
+sha2 = "0.11"
 
 # The published crate depends on these by crates.io version (above), which
 # is what downstream users get. For this crate's OWN build and tests, though,
