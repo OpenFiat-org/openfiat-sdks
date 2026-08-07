@@ -14,6 +14,13 @@
 
 ---
 
+> [!WARNING]
+> **Developer preview.** OpenFiat currently runs on **Solana devnet only**.
+> These SDKs are under **active development**, are pre-1.0, and their APIs are
+> **subject to change between 0.x releases**. Nothing here has been audited or
+> hardened for production or mainnet use. Pin exact versions and expect
+> breaking changes.
+
 ## About
 
 `openfiat-sdks` is the client-side half of the OpenFiat protocol: typed

@@ -7,6 +7,12 @@ since both implement the same RFC 8032 Ed25519. Part of the
 [openfiat-sdks](https://github.com/OpenFiat-org/openfiat-sdks) monorepo —
 see the repository root [README](../README.md) for the full layout.
 
+> **Status: developer preview.** OpenFiat currently runs on **Solana devnet
+> only**. This SDK is under **active development**, is pre-1.0, and its API is
+> **subject to change between 0.x releases**. It has not been audited or
+> hardened for production or mainnet use. Pin an exact version and expect
+> breaking changes.
+
 ```bash
 pnpm add @openfiat/sdk
 ```

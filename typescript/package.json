@@ -1,12 +1,33 @@
 {
   "name": "@openfiat/sdk",
   "version": "0.1.0",
-  "description": "Official TypeScript/JavaScript SDK for the OpenFiat protocol.",
+  "description": "Official TypeScript/JavaScript SDK for the OpenFiat protocol (Solana devnet, developer preview).",
   "license": "Apache-2.0",
+  "author": "OpenFiat",
+  "homepage": "https://github.com/OpenFiat-org/openfiat-sdks/tree/main/typescript#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OpenFiat-org/openfiat-sdks",
+    "url": "git+https://github.com/OpenFiat-org/openfiat-sdks.git",
     "directory": "typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/OpenFiat-org/openfiat-sdks/issues"
+  },
+  "keywords": [
+    "openfiat",
+    "solana",
+    "web3",
+    "p2p",
+    "stablecoin",
+    "fiat",
+    "escrow",
+    "json-rpc",
+    "sdk",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "type": "module",
   "main": "./dist/index.cjs",
@@ -27,7 +48,9 @@
   "files": [
     "dist",
     "src",
-    "tsconfig.json"
+    "tsconfig.json",
+    "README.md",
+    "LICENSE"
   ],
   "packageManager": "pnpm@9.12.0",
   "engines": {

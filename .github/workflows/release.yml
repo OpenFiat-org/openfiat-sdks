@@ -1,0 +1,60 @@
+name: Release
+
+# Publishing is driven by tags, not by pushes to main: a release is a
+# deliberate act with an irreversible outcome (a version on a public
+# registry can never be reused), so it takes an explicit `vX.Y.Z` tag.
+#
+# The npm publish below is live today. The Rust crate (rust/) cannot be
+# published to crates.io until the openfiat-core crates it depends on are
+# published there first — see rust/Cargo.toml's git dependencies — so its
+# job is intentionally not here yet.
+on:
+  push:
+    tags:
+      - "v*"
+
+# One release per tag; never let two runs race the same publish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  npm:
+    name: publish @openfiat/sdk to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Lets `npm publish --provenance` mint a signed provenance
+      # attestation from this workflow run — the package page then shows
+      # exactly which commit and workflow built it.
+      id-token: write
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          # No root-level package.json for pnpm/action-setup to read a
+          # "packageManager" field from, so pin explicitly (same as ci.yml).
+          version: 9
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - run: pnpm install --no-frozen-lockfile
+      # The tag is the source of truth for what is being released; refuse
+      # to publish if package.json disagrees, rather than shipping a
+      # version nobody asked for.
+      - name: Verify tag matches package version
+        run: |
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "v$pkg" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $pkg" >&2
+            exit 1
+          fi
+      - run: pnpm build
+      - name: Publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
