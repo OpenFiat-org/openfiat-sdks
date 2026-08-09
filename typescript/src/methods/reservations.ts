@@ -1,5 +1,7 @@
 import type { Client } from "../client.js";
 import { type Keypair, sign } from "../crypto.js";
+import { preimageOf } from "../domain.js";
+import { tags } from "../tags.js";
 import {
   toBase58,
   type PublicReservation,
@@ -46,7 +48,7 @@ export async function sendReservationRequest(
   request: ReservationRequest,
   keypair: Keypair,
 ): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify(request));
+  const bytes = preimageOf(tags.ReservationRequest, request);
   const signature = await sign(keypair, bytes);
   const signed: SignedReservationRequest = { request, signature: toBase58(signature) };
   return client.sendSigned("sendReservationRequest", signed);
@@ -74,7 +76,7 @@ export async function sendReservationCancel(
   cancel: ReservationCancel,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(cancel));
+  const bytes = preimageOf(tags.ReservationCancel, cancel);
   const signature = await sign(keypair, bytes);
   const signed: SignedReservationCancel = { cancel, signature: toBase58(signature) };
   return client.sendSigned("sendReservationCancel", signed);

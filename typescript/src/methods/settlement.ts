@@ -1,6 +1,8 @@
 /** Settlement methods (OFS-2300). */
 import type { Client } from "../client.js";
 import { type Keypair, sign } from "../crypto.js";
+import { preimageOf } from "../domain.js";
+import { tags } from "../tags.js";
 import {
   toBase58,
   type PaymentReversed,
@@ -76,7 +78,7 @@ export async function sendSettlementInitiate(
   initiate: SettlementInitiate,
   keypair: Keypair,
 ): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify(initiate));
+  const bytes = preimageOf(tags.SettlementInitiate, initiate);
   const signature = await sign(keypair, bytes);
   const signed: SignedSettlementInitiate = { initiate, signature: toBase58(signature) };
   return client.sendSigned("sendSettlementInitiate", signed);
@@ -99,7 +101,7 @@ export async function sendPaymentSubmitted(
   payment: PaymentSubmitted,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(payment));
+  const bytes = preimageOf(tags.PaymentSubmitted, payment);
   const signature = await sign(keypair, bytes);
   const signed: SignedPaymentSubmitted = { action: payment, signature: toBase58(signature) };
   return client.sendSigned("sendPaymentSubmitted", signed);
@@ -129,7 +131,7 @@ export async function sendPaymentReversed(
   reversed: PaymentReversed,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(reversed));
+  const bytes = preimageOf(tags.PaymentReversed, reversed);
   const signature = await sign(keypair, bytes);
   const signed: SignedPaymentReversed = { action: reversed, signature: toBase58(signature) };
   return client.sendSigned("sendPaymentReversed", signed);
@@ -158,7 +160,7 @@ export async function sendSettlementRejected(
   rejected: SettlementRejected,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(rejected));
+  const bytes = preimageOf(tags.SettlementRejected, rejected);
   const signature = await sign(keypair, bytes);
   const signed: SignedSettlementRejected = { action: rejected, signature: toBase58(signature) };
   return client.sendSigned("sendSettlementRejected", signed);
@@ -188,7 +190,7 @@ export async function sendSettlementCancelled(
   cancelled: SettlementCancelled,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(cancelled));
+  const bytes = preimageOf(tags.SettlementCancelled, cancelled);
   const signature = await sign(keypair, bytes);
   const signed: SignedSettlementCancelled = { action: cancelled, signature: toBase58(signature) };
   return client.sendSigned("sendSettlementCancelled", signed);

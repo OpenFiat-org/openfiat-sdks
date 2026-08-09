@@ -1,5 +1,7 @@
 import type { Client } from "../client.js";
 import { type Keypair, sign } from "../crypto.js";
+import { preimageOf } from "../domain.js";
+import { tags } from "../tags.js";
 import {
   toBase58,
   type AdvertisementCreate,
@@ -102,7 +104,7 @@ export async function sendAdvertisementCreate(
   create: AdvertisementCreate,
   keypair: Keypair,
 ): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify(create));
+  const bytes = preimageOf(tags.AdvertisementCreate, create);
   const signature = await sign(keypair, bytes);
   const signed: SignedAdvertisementCreate = { create, signature: toBase58(signature) };
   return client.sendSigned("sendAdvertisementCreate", signed);
@@ -119,7 +121,7 @@ export async function sendAdvertisementStatusSet(
   set: AdvertisementStatusSet,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(set));
+  const bytes = preimageOf(tags.AdvertisementStatusSet, set);
   const signature = await sign(keypair, bytes);
   const signed: SignedAdvertisementStatusSet = { set, signature: toBase58(signature) };
   return client.sendSigned("sendAdvertisementStatusSet", signed);
@@ -132,7 +134,7 @@ export async function sendAdvertisementTermsUpdate(
   update: AdvertisementTermsUpdate,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(update));
+  const bytes = preimageOf(tags.AdvertisementTermsUpdate, update);
   const signature = await sign(keypair, bytes);
   const signed: SignedAdvertisementTermsUpdate = { update, signature: toBase58(signature) };
   return client.sendSigned("sendAdvertisementTermsUpdate", signed);
@@ -145,7 +147,7 @@ export async function sendAdvertisementPriceUpdate(
   update: AdvertisementPriceUpdate,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(update));
+  const bytes = preimageOf(tags.AdvertisementPriceUpdate, update);
   const signature = await sign(keypair, bytes);
   const signed: SignedAdvertisementPriceUpdate = { update, signature: toBase58(signature) };
   return client.sendSigned("sendAdvertisementPriceUpdate", signed);

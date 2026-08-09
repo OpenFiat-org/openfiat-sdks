@@ -1,5 +1,7 @@
 import type { Client } from "../client.js";
 import { type Keypair, sign } from "../crypto.js";
+import { preimageOf } from "../domain.js";
+import { tags } from "../tags.js";
 import {
   toBase58,
   type DeliveryReceipt,
@@ -36,7 +38,7 @@ export async function sendSubscriptionUpdate(
   update: SubscriptionUpdate,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(update));
+  const bytes = preimageOf(tags.SubscriptionUpdate, update);
   const signature = await sign(keypair, bytes);
   const signed: SignedSubscriptionUpdate = { update, signature: toBase58(signature) };
   return client.sendSigned("sendSubscriptionUpdate", signed);
@@ -52,7 +54,7 @@ export async function sendDeliveryReport(
   report: DeliveryReport,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(report));
+  const bytes = preimageOf(tags.DeliveryReport, report);
   const signature = await sign(keypair, bytes);
   const signed: SignedDeliveryReport = { report, signature: toBase58(signature) };
   return client.sendSigned("sendDeliveryReport", signed);

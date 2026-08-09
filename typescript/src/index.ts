@@ -24,6 +24,8 @@ export {
 // exports the identical shape as part of the notification surface, and two
 // exports of one name is an error rather than a convenience.
 export { SealError, openSealed, seal, sealTo } from "./seal.js";
+export { preimage, preimageOf } from "./domain.js";
+export { tags } from "./tags.js";
 export {
   DERIVATION_MESSAGE,
   type EncryptionKeypair,

@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { decodeBase58 } from "../src/base58.js";
 import { Client } from "../src/client.js";
 import { generateKeypair, peerIdFromPublicKey } from "../src/crypto.js";
+import { preimageOf } from "../src/domain.js";
+import { tags } from "../src/tags.js";
 import {
   earningsChallengeBytes,
   getProviderEarnings,
@@ -76,8 +78,9 @@ describe("provider lifecycle methods", () => {
     };
     expect(payload.update).toEqual(update);
 
-    // The node verifies over the JSON of the inner struct, not the envelope.
-    const signedBytes = new TextEncoder().encode(JSON.stringify(update));
+    // The node verifies over the domain-separated preimage of the inner
+    // struct (F-01), not the envelope and not bare JSON.
+    const signedBytes = preimageOf(tags.HealthUpdate, update);
     await expect(
       ed.verifyAsync(decodeBase58(payload.signature), signedBytes, keypair.publicKey),
     ).resolves.toBe(true);
@@ -103,7 +106,7 @@ describe("provider lifecycle methods", () => {
     };
     expect(payload.withdrawal).toEqual(withdrawal);
 
-    const signedBytes = new TextEncoder().encode(JSON.stringify(withdrawal));
+    const signedBytes = preimageOf(tags.Withdrawal, withdrawal);
     await expect(
       ed.verifyAsync(decodeBase58(payload.signature), signedBytes, keypair.publicKey),
     ).resolves.toBe(true);
@@ -123,7 +126,7 @@ describe("provider lifecycle methods", () => {
     await sendProviderWithdraw(client, withdrawal, impostor);
 
     const payload = decodePayload(onlyCall(calls)) as { signature: string };
-    const signedBytes = new TextEncoder().encode(JSON.stringify(withdrawal));
+    const signedBytes = preimageOf(tags.Withdrawal, withdrawal);
     await expect(
       ed.verifyAsync(decodeBase58(payload.signature), signedBytes, owner.publicKey),
     ).resolves.toBe(false);

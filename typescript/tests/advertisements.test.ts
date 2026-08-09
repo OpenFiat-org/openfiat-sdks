@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { decodeBase58 } from "../src/base58.js";
 import { Client } from "../src/client.js";
 import { generateKeypair, peerIdFromPublicKey } from "../src/crypto.js";
+import { preimageOf } from "../src/domain.js";
+import { tags } from "../src/tags.js";
 import {
   eachAdvertisement,
   getAdvertisements,
@@ -89,8 +91,9 @@ describe("advertisement lifecycle methods", () => {
     };
     expect(payload.set).toEqual(set);
 
-    // The node verifies over the JSON of the inner struct, not the envelope.
-    const signedBytes = new TextEncoder().encode(JSON.stringify(set));
+    // The node verifies over the domain-separated preimage of the inner
+    // struct (F-01), not the envelope and not bare JSON.
+    const signedBytes = preimageOf(tags.AdvertisementStatusSet, set);
     await expect(
       ed.verifyAsync(
         decodeBase58(payload.signature),
@@ -115,7 +118,7 @@ describe("advertisement lifecycle methods", () => {
     await sendAdvertisementStatusSet(client, set, impostor);
 
     const payload = decodePayload(onlyCall(calls)) as { signature: string };
-    const signedBytes = new TextEncoder().encode(JSON.stringify(set));
+    const signedBytes = preimageOf(tags.AdvertisementStatusSet, set);
     await expect(
       ed.verifyAsync(
         decodeBase58(payload.signature),
@@ -146,7 +149,7 @@ describe("advertisement lifecycle methods", () => {
     };
     expect(payload.update).toEqual(update);
 
-    const signedBytes = new TextEncoder().encode(JSON.stringify(update));
+    const signedBytes = preimageOf(tags.AdvertisementPriceUpdate, update);
     await expect(
       ed.verifyAsync(
         decodeBase58(payload.signature),
@@ -170,7 +173,7 @@ describe("advertisement lifecycle methods", () => {
     await sendAdvertisementPriceUpdate(client, update, impostor);
 
     const payload = decodePayload(onlyCall(calls)) as { signature: string };
-    const signedBytes = new TextEncoder().encode(JSON.stringify(update));
+    const signedBytes = preimageOf(tags.AdvertisementPriceUpdate, update);
     await expect(
       ed.verifyAsync(
         decodeBase58(payload.signature),
@@ -503,7 +506,7 @@ describe("the price quote a node attaches to every advertisement", () => {
     };
     expect(payload.update).toEqual(update);
 
-    const signedBytes = new TextEncoder().encode(JSON.stringify(update));
+    const signedBytes = preimageOf(tags.AdvertisementTermsUpdate, update);
     await expect(
       ed.verifyAsync(
         decodeBase58(payload.signature),

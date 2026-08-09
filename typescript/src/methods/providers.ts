@@ -1,5 +1,7 @@
 import type { Client } from "../client.js";
 import { type Keypair, sign } from "../crypto.js";
+import { preimageOf } from "../domain.js";
+import { tags } from "../tags.js";
 import {
   toBase58,
   type EarningsChallenge,
@@ -26,7 +28,7 @@ export async function sendProviderRegister(
   registration: Registration,
   keypair: Keypair,
 ): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify(registration));
+  const bytes = preimageOf(tags.Registration, registration);
   const signature = await sign(keypair, bytes);
   const signed: SignedRegistration = { registration, signature: toBase58(signature) };
   return client.sendSigned("sendProviderRegister", signed);
@@ -42,7 +44,7 @@ export async function sendProviderHealthUpdate(
   update: HealthUpdate,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(update));
+  const bytes = preimageOf(tags.HealthUpdate, update);
   const signature = await sign(keypair, bytes);
   const signed: SignedHealthUpdate = { update, signature: toBase58(signature) };
   return client.sendSigned("sendProviderHealthUpdate", signed);
@@ -57,7 +59,7 @@ export async function sendProviderWithdraw(
   withdrawal: Withdrawal,
   keypair: Keypair,
 ): Promise<void> {
-  const bytes = new TextEncoder().encode(JSON.stringify(withdrawal));
+  const bytes = preimageOf(tags.Withdrawal, withdrawal);
   const signature = await sign(keypair, bytes);
   const signed: SignedWithdrawal = { withdrawal, signature: toBase58(signature) };
   return client.sendSigned("sendProviderWithdraw", signed);

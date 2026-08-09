@@ -1,5 +1,7 @@
 import type { Client } from "../client.js";
 import { type Keypair, sign } from "../crypto.js";
+import { preimageOf } from "../domain.js";
+import { tags } from "../tags.js";
 import { toBase58, type OraclePublish, type OracleRecord, type SignedOraclePublish } from "../types.js";
 
 export async function getOracleRecord(client: Client, id: string): Promise<OracleRecord | null> {
@@ -29,7 +31,7 @@ export async function sendOraclePublish(
   publish: OraclePublish,
   keypair: Keypair,
 ): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify(publish));
+  const bytes = preimageOf(tags.OraclePublish, publish);
   const signature = await sign(keypair, bytes);
   const signed: SignedOraclePublish = { publish, signature: toBase58(signature) };
   return client.sendSigned("sendOraclePublish", signed);
