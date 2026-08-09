@@ -108,7 +108,7 @@ async fn a_status_set_is_submitted_with_a_signature_that_verifies_over_its_json(
 
     // The node verifies over the JSON of the inner struct, not the envelope
     // — see `AdvertisementRegistry::apply_status_set`.
-    let expected_bytes = openfiat_serialization::json::to_bytes(&set).unwrap();
+    let expected_bytes = openfiat_serialization::domain::preimage(openfiat_serialization::domain::tag::ADVERTISEMENT_STATUS_SET, &set).unwrap();
     openfiat_crypto::verify(&owner.public_key(), &expected_bytes, &signed.signature)
         .expect("the builder's own signature must verify against the JSON it signed");
 }
@@ -141,7 +141,7 @@ async fn a_status_set_signed_by_an_impostor_does_not_verify_against_the_named_me
     let bytes = only_call_data(&captured);
     let signed: SignedAdvertisementStatusSet =
         openfiat_serialization::json::from_bytes(&bytes).unwrap();
-    let expected_bytes = openfiat_serialization::json::to_bytes(&set).unwrap();
+    let expected_bytes = openfiat_serialization::domain::preimage(openfiat_serialization::domain::tag::ADVERTISEMENT_STATUS_SET, &set).unwrap();
     assert!(
         openfiat_crypto::verify(&owner.public_key(), &expected_bytes, &signed.signature).is_err(),
         "a signature from the impostor's key must not verify against the owner's public key"
@@ -184,7 +184,7 @@ async fn a_price_update_is_submitted_with_a_signature_that_verifies_over_the_upd
         "the price update must round-trip unchanged"
     );
 
-    let expected_bytes = openfiat_serialization::json::to_bytes(&update).unwrap();
+    let expected_bytes = openfiat_serialization::domain::preimage(openfiat_serialization::domain::tag::ADVERTISEMENT_PRICE_UPDATE, &update).unwrap();
     openfiat_crypto::verify(&owner.public_key(), &expected_bytes, &signed.signature)
         .expect("the builder's own signature must verify against the JSON it signed");
 }
@@ -216,7 +216,7 @@ async fn a_price_update_signed_by_an_impostor_does_not_verify_against_the_named_
     let bytes = only_call_data(&captured);
     let signed: SignedAdvertisementPriceUpdate =
         openfiat_serialization::json::from_bytes(&bytes).unwrap();
-    let expected_bytes = openfiat_serialization::json::to_bytes(&update).unwrap();
+    let expected_bytes = openfiat_serialization::domain::preimage(openfiat_serialization::domain::tag::ADVERTISEMENT_PRICE_UPDATE, &update).unwrap();
     assert!(
         openfiat_crypto::verify(&owner.public_key(), &expected_bytes, &signed.signature).is_err(),
         "a signature from the impostor's key must not verify against the owner's public key"
@@ -262,7 +262,7 @@ async fn a_terms_update_is_submitted_with_a_signature_that_verifies_over_its_jso
     // merchant signed.
     assert_eq!(signed.update, update);
 
-    let expected_bytes = openfiat_serialization::json::to_bytes(&update).unwrap();
+    let expected_bytes = openfiat_serialization::domain::preimage(openfiat_serialization::domain::tag::ADVERTISEMENT_TERMS_UPDATE, &update).unwrap();
     openfiat_crypto::verify(&owner.public_key(), &expected_bytes, &signed.signature)
         .expect("the builder's own signature must verify against the JSON it signed");
 }
