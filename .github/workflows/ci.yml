@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: ["main"]
 
+# Minimal token: CI only reads the repo (F-07).
+permissions:
+  contents: read
+
 jobs:
   rust-sdk:
     name: rust/ (fmt/clippy/test)
