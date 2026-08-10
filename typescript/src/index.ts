@@ -50,3 +50,4 @@ export * as settlement from "./methods/settlement.js";
 export * as trade from "./methods/trade.js";
 export * as wallet from "./methods/wallet.js";
 export * as onchain from "./onchain/index.js";
+export * as debridge from "./debridge/index.js";

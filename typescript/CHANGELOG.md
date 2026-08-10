@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - Unreleased
 
+### Added
+
+- **`debridge.buildDeliverContributionHook` — deBridge DLN Solana Hook
+  calldata for cross-chain presale contributions (SP-B).** Builds the
+  `{ type: "solana_serialized_instructions", data: "0x..." }` hook the
+  DLN `create-tx` API's `dlnHook` parameter accepts, wrapping an Anchor
+  `presale::deliver_contribution` call in deBridge's own
+  `ExternalInstruction` binary layout (implemented directly against
+  deBridge's public Solidity reference serializer and checked
+  byte-for-byte against a worked example from deBridge's own docs —
+  see `src/debridge/hook.ts`'s module doc for the full sourcing and the
+  format assumptions still needing live-deBridge validation). The
+  executor-provided `payer`/`source_usdc` accounts are written as
+  deBridge's own `AUTHORITY_PLACEHOLDER`/`WALLET_PLACEHOLDER`, never
+  accepted as parameters. New: `src/debridge/hook.ts`, exported as
+  `debridge` from the package root alongside `onchain`.
+
 ### Breaking
 
 - **Domain-separated signing preimages for every client-signed wire event
