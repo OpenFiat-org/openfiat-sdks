@@ -9,6 +9,7 @@ import {
   buildDeliverContributionHook,
   buildSolanaHook,
   decodeSolanaHook,
+  encodeExternalInstruction,
   type ExternalInstruction,
 } from "../src/debridge/hook.js";
 import { fakePubkey } from "./onchain-helpers.js";
@@ -43,10 +44,10 @@ const fixture = {
 describe("buildDeliverContributionHook", () => {
   const hook = buildDeliverContributionHook(fixture);
 
-  it("produces the DLN API's solana_serialized_instructions envelope", () => {
+  it("produces the DLN API's solana_serialized_instructions envelope (nested data.instructions, per the live create-tx Swagger spec)", () => {
     expect(hook.type).toBe("solana_serialized_instructions");
-    expect(hook.data.startsWith("0x")).toBe(true);
-    expect(hook.data.length % 2).toBe(0);
+    expect(hook.data.instructions.startsWith("0x")).toBe(true);
+    expect(hook.data.instructions.length % 2).toBe(0);
   });
 
   it("round-trips through decodeSolanaHook to a single ExternalInstruction targeting the presale program", () => {
@@ -207,17 +208,23 @@ describe("ExternalInstruction encode/decode (general round trip)", () => {
   });
 
   // A real `solana_serialized_instructions` example straight from deBridge's
-  // own docs (dln-details/integration-guidelines/order-creation/hooks/
-  // integrating-debridge-hooks, "DlnHook encoding example"). Decoding it
-  // cleanly to zero leftover bytes, with recognizable placeholders and
-  // well-known program ids, is the strongest evidence available in this
-  // environment that the wire format above matches the real one — this
-  // repo can't reach a live deBridge executor to confirm it any harder.
-  it("decodes deBridge's own worked DlnHook example with zero leftover bytes", () => {
-    const data =
-      "0x000000000000000001000000000000000000000000010000000000000000010000000000000000135d3e6be2a2ae5274cfe4007df2f62ed31c618f048337fd1435ca2dee2a0d5d12000000000000001968562fef0aab1b1d8f99d44306595cd4ba41d7cc899c007a774d23ad702ff60101fd97b70d573d364ef44769540777b1ecdc21b88ff7def38c45d020e271c589dc00010000000000000000000000000000000000000000000000000000000000000000000062584959deb8a728a91cebdc187b545d920479265052145f31fb80c73fac5aea00009845350d27001686985bbc5c4a3646c928d7de27ddab09f2de56d21537201c4300019845350d27001686985bbc5c4a3646c928d7de27ddab09f2de56d21537201c4300010c1e5ba8fe0ec5c5e44d12c2b6317a8781ca19ddb0e1532b136f418e1d588f9500010c1e5ba8fe0ec5c5e44d12c2b6317a8781ca19ddb0e1532b136f418e1d588f95000106ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a900000000000000000000000000000000000000000000000000000000000000000000000006a7d517187bd16635dad40455fdc2c0c124c68f215675a5dbbacb5f0800000000008c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f8590000ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000974d0b69f43d964da48af118a28037ab921a95eae1e637497b22867ce416255a00016be7362bf52e4ea29063d29ab43a832253ed7c68b62cf68e8d706a2f9531c1eb0001c6fa7af3bedbad3a3d65f36aabc97431b1bbe4c2d2f6e0e47ca60203452f5d610000040000000000000000736f6c";
+  // own docs ("Integrating Hooks" -> "DlnHook encoding example").
+  // Canonical URL: https://docs.debridge.com/dln-details/integration-guidelines/order-creation/hooks/integrating-hooks
+  // — that exact page 404s as of this test being written. Fallback/archive
+  // citation for the same content (same "Source:" URL, confirmed live):
+  // https://docs.debridge.com/llms-full.txt (search for "DlnHook encoding example").
+  // Decoding it cleanly to zero leftover bytes, with recognizable
+  // placeholders and well-known program ids, and then *re-encoding* the
+  // decode back to the identical original bytes, is the strongest evidence
+  // available in this environment that the wire format above — both
+  // decoder and encoder — matches the real one; this repo can't reach a
+  // live deBridge executor to confirm it any harder.
+  it("decodes deBridge's own worked DlnHook example with zero leftover bytes, and re-encodes it byte-for-byte", () => {
+    const hex =
+      "000000000000000001000000000000000000000000010000000000000000010000000000000000135d3e6be2a2ae5274cfe4007df2f62ed31c618f048337fd1435ca2dee2a0d5d12000000000000001968562fef0aab1b1d8f99d44306595cd4ba41d7cc899c007a774d23ad702ff60101fd97b70d573d364ef44769540777b1ecdc21b88ff7def38c45d020e271c589dc00010000000000000000000000000000000000000000000000000000000000000000000062584959deb8a728a91cebdc187b545d920479265052145f31fb80c73fac5aea00009845350d27001686985bbc5c4a3646c928d7de27ddab09f2de56d21537201c4300019845350d27001686985bbc5c4a3646c928d7de27ddab09f2de56d21537201c4300010c1e5ba8fe0ec5c5e44d12c2b6317a8781ca19ddb0e1532b136f418e1d588f9500010c1e5ba8fe0ec5c5e44d12c2b6317a8781ca19ddb0e1532b136f418e1d588f95000106ddf6e1d765a193d9cbe146ceeb79ac1cb485ed5f5b37913a8cf5857eff00a900000000000000000000000000000000000000000000000000000000000000000000000006a7d517187bd16635dad40455fdc2c0c124c68f215675a5dbbacb5f0800000000008c97258f4e2489f1bb3d1029148e0d830b5a1399daff1084048e7bd8dbe9f8590000ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000974d0b69f43d964da48af118a28037ab921a95eae1e637497b22867ce416255a00016be7362bf52e4ea29063d29ab43a832253ed7c68b62cf68e8d706a2f9531c1eb0001c6fa7af3bedbad3a3d65f36aabc97431b1bbe4c2d2f6e0e47ca60203452f5d610000040000000000000000736f6c";
+    const data = `0x${hex}`;
 
-    const [decoded, ...rest] = decodeSolanaHook({ type: "solana_serialized_instructions", data });
+    const [decoded, ...rest] = decodeSolanaHook({ type: "solana_serialized_instructions", data: { instructions: data } });
 
     expect(rest).toHaveLength(0);
     expect(decoded?.instruction.keys).toHaveLength(18);
@@ -225,5 +232,10 @@ describe("ExternalInstruction encode/decode (general round trip)", () => {
     expect(decoded?.instruction.keys[0]?.isSigner).toBe(true);
     expect(decoded?.instruction.keys[1]?.pubkey.equals(WALLET_PLACEHOLDER)).toBe(true);
     expect(decoded?.instruction.keys[11]?.pubkey.equals(ASSOCIATED_TOKEN_PROGRAM_ID)).toBe(true);
+
+    // The encoder direction: re-encoding what we just decoded must reproduce
+    // deBridge's original bytes exactly, not just decode without throwing.
+    const reEncoded = encodeExternalInstruction(decoded!);
+    expect(reEncoded.toString("hex")).toBe(hex);
   });
 });

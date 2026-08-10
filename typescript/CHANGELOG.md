@@ -12,8 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`debridge.buildDeliverContributionHook` — deBridge DLN Solana Hook
   calldata for cross-chain presale contributions (SP-B).** Builds the
-  `{ type: "solana_serialized_instructions", data: "0x..." }` hook the
-  DLN `create-tx` API's `dlnHook` parameter accepts, wrapping an Anchor
+  `{ type: "solana_serialized_instructions", data: { instructions: "0x..." } }`
+  hook the DLN `create-tx` API's `dlnHook` parameter accepts (per the
+  live `create-tx` Swagger spec — flagged for live confirmation before
+  it's used to place a real order, see the module doc), wrapping an Anchor
   `presale::deliver_contribution` call in deBridge's own
   `ExternalInstruction` binary layout (implemented directly against
   deBridge's public Solidity reference serializer and checked

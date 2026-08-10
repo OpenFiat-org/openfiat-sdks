@@ -9,8 +9,34 @@
  * `deliver_contribution` call (see `openfiat-core/programs/programs/
  * presale`), wrapped in deBridge's own `ExternalInstruction` binary
  * layout and packaged as the `{ type: "solana_serialized_instructions",
- * data: "0x..." }` value the DLN `create-tx` API's `dlnHook` parameter
- * accepts.
+ * data: { instructions: "0x..." } }` value the DLN `create-tx` API's
+ * `dlnHook` parameter accepts.
+ *
+ * # Envelope shape — two conflicting primary sources
+ *
+ * deBridge's own docs disagree with each other on `data`'s shape for
+ * this hook type. The prose guide ("Integrating Hooks", and its
+ * "DlnHook encoding example") shows `data` as a **bare hex string**:
+ * `{ type: "solana_serialized_instructions", data: "0x..." }`. The
+ * live OpenAPI/Swagger spec the `create-tx` endpoint itself serves
+ * (`https://docs.debridge.com/dln-details/swagger/create-tx.json`,
+ * fetched and confirmed `200 OK` while writing this module — the prose
+ * guide page 404s directly right now) describes `dlnHook`'s
+ * `solana_serialized_instructions` template as a **nested object**:
+ * `{ type: "solana_serialized_instructions", data: { instructions:
+ * "0x..." } }`.
+ *
+ * This module follows the **Swagger spec** (the nested shape) as the
+ * more authoritative of the two: it's machine-generated from the live
+ * endpoint's own parameter schema rather than a hand-written example
+ * that can silently drift, and it responded `200` from the same
+ * request that found the prose guide broken. **This has not been
+ * confirmed against a real `create-tx` call — Task 4 must verify the
+ * envelope shape against the live API before this hook is used to
+ * place a real order.** If `create-tx` actually wants the flat-string
+ * shape, the only change needed is `buildSolanaHook`'s return
+ * statement — the shape is produced/consumed in exactly that one
+ * place (`SolanaHookData` + `buildSolanaHook`/`decodeSolanaHook`).
  *
  * # Wire format and how it was sourced
  *
@@ -33,14 +59,22 @@
  * — Solidity, executable, and unambiguous about field order/width in a
  * way the prose docs aren't. It was then checked byte-for-byte by
  * decoding the worked `solana_serialized_instructions` example from
- * deBridge's own docs
- * (`dln-details/integration-guidelines/order-creation/hooks/
- * integrating-debridge-hooks`) with this module's own `decodeSolanaHook`
- * — that real, DLN-produced example decodes cleanly to zero leftover
- * bytes, 18 accounts, and recognizable placeholder/program pubkeys
- * (`AUTHORITY_PLACEHOLDER`, `WALLET_PLACEHOLDER`, the SPL Associated
- * Token and legacy Token programs, mainnet USDC), which is strong
- * evidence the byte layout implemented here is right.
+ * deBridge's own docs ("Integrating Hooks" ->
+ * "DlnHook encoding example", canonically at
+ * `https://docs.debridge.com/dln-details/integration-guidelines/
+ * order-creation/hooks/integrating-hooks` — that exact page currently
+ * 404s; the same content, with the same "Source:" URL, is mirrored at
+ * `https://docs.debridge.com/llms-full.txt`, which was live when this
+ * was written and is this module's fallback citation for that vector)
+ * with this module's own `decodeSolanaHook` — that real, DLN-produced
+ * example decodes cleanly to zero leftover bytes, 18 accounts, and
+ * recognizable placeholder/program pubkeys (`AUTHORITY_PLACEHOLDER`,
+ * `WALLET_PLACEHOLDER`, the SPL Associated Token and legacy Token
+ * programs, mainnet USDC), which is strong evidence the byte layout
+ * implemented here is right. `tests/debridge-hook.test.ts` checks both
+ * directions: decoding that vector, and re-encoding the decode back to
+ * the identical original bytes — the latter is what actually exercises
+ * the encoder, not just the decoder.
  *
  * One deliberate divergence from `DeBridgeSolanaSerializer.sol`: that
  * library special-cases an *empty* `pubkey_substitutions`/
@@ -54,6 +88,10 @@
  *
  * # What still needs live-deBridge validation (flagged for Task 4)
  *
+ * - **The `data` envelope shape itself** — see above. Highest-priority
+ *   item to verify: getting this wrong either makes `create-tx` reject
+ *   the order outright, or (worse) silently ignore the hook so the
+ *   order still bridges funds but `deliver_contribution` never fires.
  * - `reward`/`expense` are caller-supplied here and default to `0n`. In
  *   practice a profitable `reward` has to come from the DLN API's own
  *   cost-estimation step (`create-tx`) before an order is placed, or no
@@ -170,11 +208,20 @@ export interface ExternalInstruction {
   instruction: TransactionInstruction;
 }
 
-/** The single-instruction hook shape the DLN `create-tx` API's `dlnHook` parameter accepts for Solana (`dstChainId=7565164`). */
+/**
+ * The single-instruction hook shape the DLN `create-tx` API's `dlnHook`
+ * parameter accepts for Solana (`dstChainId=7565164`) — per the live
+ * `create-tx` Swagger/OpenAPI spec's `dlnHook` parameter description.
+ * See the module doc's "Envelope shape" section: this is the more
+ * authoritative of two disagreeing deBridge sources and is flagged for
+ * live confirmation in Task 4.
+ */
 export interface SolanaHookData {
   type: "solana_serialized_instructions";
-  /** `0x`-prefixed hex — the concatenation of each instruction's serialized `ExternalInstruction`. */
-  data: string;
+  data: {
+    /** `0x`-prefixed hex — the concatenation of each instruction's serialized `ExternalInstruction`. */
+    instructions: string;
+  };
 }
 
 function optionU64(value: bigint | undefined): Uint8Array {
@@ -257,7 +304,7 @@ export function encodeExternalInstruction(ei: ExternalInstruction): Buffer {
 /** Concatenates one or more hook instructions into the DLN API's `dlnHook` payload for Solana. */
 export function buildSolanaHook(instructions: ExternalInstruction[]): SolanaHookData {
   const bytes = concat(...instructions.map(encodeExternalInstruction));
-  return { type: "solana_serialized_instructions", data: `0x${bytes.toString("hex")}` };
+  return { type: "solana_serialized_instructions", data: { instructions: `0x${bytes.toString("hex")}` } };
 }
 
 class Cursor {
@@ -391,9 +438,10 @@ function decodeOneExternalInstruction(c: Cursor): ExternalInstruction {
   };
 }
 
-/** Decodes a `data` hex blob produced by {@link buildSolanaHook} back into its instructions — the inverse of `encodeExternalInstruction`, run once per concatenated instruction. */
+/** Decodes a hook produced by {@link buildSolanaHook} back into its instructions — the inverse of `encodeExternalInstruction`, run once per concatenated instruction. */
 export function decodeSolanaHook(hook: SolanaHookData): ExternalInstruction[] {
-  const hex = hook.data.startsWith("0x") ? hook.data.slice(2) : hook.data;
+  const raw = hook.data.instructions;
+  const hex = raw.startsWith("0x") ? raw.slice(2) : raw;
   const c = new Cursor(Buffer.from(hex, "hex"));
   const instructions: ExternalInstruction[] = [];
   while (c.remaining() > 0) {
