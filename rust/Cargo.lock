@@ -1009,6 +1009,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "6.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6361d5c062261c78a176addb82d4c821ae42bed6089de0e12603cd25de2059c"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "data-encoding"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1386,6 +1400,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "forwarded-header-value"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8835f84f38484cc86f110a805655697908257fb9a7af005234060891557198e9"
+dependencies = [
+ "nonempty",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1588,7 +1612,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68a7f542ee6b35af73b06abc0dad1c1bae89964e4e253bc4b587b91c9637867b"
 dependencies = [
  "cfg-if",
- "dashmap",
+ "dashmap 5.5.3",
  "futures",
  "futures-timer",
  "no-std-compat",
@@ -1599,6 +1623,29 @@ dependencies = [
  "rand 0.8.7",
  "smallvec",
  "spinning_top",
+]
+
+[[package]]
+name = "governor"
+version = "0.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9efcab3c1958580ff1f25a2a41be1668f7603d849bb63af523b208a3cc1223b8"
+dependencies = [
+ "cfg-if",
+ "dashmap 6.2.1",
+ "futures-sink",
+ "futures-timer",
+ "futures-util",
+ "getrandom 0.3.4",
+ "hashbrown 0.16.1",
+ "nonzero_ext",
+ "parking_lot",
+ "portable-atomic",
+ "quanta",
+ "rand 0.9.5",
+ "smallvec",
+ "spinning_top",
+ "web-time",
 ]
 
 [[package]]
@@ -1644,6 +1691,17 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash 0.1.5",
+]
+
+[[package]]
+name = "hashbrown"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash 0.2.0",
 ]
 
 [[package]]
@@ -2879,6 +2937,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "nonempty"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9e591e719385e6ebaeb5ce5d3887f7d5676fceca6411d1925ccc95745f3d6f7"
+
+[[package]]
 name = "nonzero_ext"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3055,7 +3119,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 [[package]]
 name = "openfiat-advertisements"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3070,7 +3134,7 @@ dependencies = [
 [[package]]
 name = "openfiat-api"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "axum",
  "openfiat-rpc",
@@ -3081,7 +3145,7 @@ dependencies = [
 [[package]]
 name = "openfiat-chain"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "async-trait",
  "bincode",
@@ -3105,7 +3169,7 @@ dependencies = [
 [[package]]
 name = "openfiat-content"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "async-trait",
  "futures",
@@ -3128,7 +3192,7 @@ dependencies = [
 [[package]]
 name = "openfiat-crypto"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "bs58",
  "chacha20poly1305",
@@ -3143,7 +3207,7 @@ dependencies = [
 [[package]]
 name = "openfiat-discovery"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "libp2p",
  "openfiat-crypto",
@@ -3159,7 +3223,7 @@ dependencies = [
 [[package]]
 name = "openfiat-disputes"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3174,7 +3238,7 @@ dependencies = [
 [[package]]
 name = "openfiat-gossip"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "libp2p",
  "openfiat-crypto",
@@ -3183,12 +3247,13 @@ dependencies = [
  "openfiat-storage",
  "openfiat-types",
  "serde",
+ "tracing",
 ]
 
 [[package]]
 name = "openfiat-governance"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3203,7 +3268,7 @@ dependencies = [
 [[package]]
 name = "openfiat-identity"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3217,12 +3282,12 @@ dependencies = [
 [[package]]
 name = "openfiat-metrics"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 
 [[package]]
 name = "openfiat-network"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "async-trait",
  "futures",
@@ -3241,7 +3306,7 @@ dependencies = [
 [[package]]
 name = "openfiat-notifications"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "async-trait",
  "openfiat-crypto",
@@ -3258,7 +3323,7 @@ dependencies = [
 [[package]]
 name = "openfiat-oracles"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3273,7 +3338,7 @@ dependencies = [
 [[package]]
 name = "openfiat-registry"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3288,7 +3353,7 @@ dependencies = [
 [[package]]
 name = "openfiat-reputation"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-disputes",
  "openfiat-reservations",
@@ -3301,7 +3366,7 @@ dependencies = [
 [[package]]
 name = "openfiat-reservations"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-advertisements",
  "openfiat-crypto",
@@ -3316,7 +3381,7 @@ dependencies = [
 [[package]]
 name = "openfiat-reviews"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-crypto",
  "openfiat-network",
@@ -3330,7 +3395,7 @@ dependencies = [
 [[package]]
 name = "openfiat-rewards"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-types",
  "serde",
@@ -3339,7 +3404,7 @@ dependencies = [
 [[package]]
 name = "openfiat-risk"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3354,7 +3419,7 @@ dependencies = [
 [[package]]
 name = "openfiat-rpc"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -3395,6 +3460,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tower-http",
+ "tower_governor",
  "tracing",
 ]
 
@@ -3452,7 +3518,7 @@ dependencies = [
 [[package]]
 name = "openfiat-serialization"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-types",
  "postcard",
@@ -3463,7 +3529,7 @@ dependencies = [
 [[package]]
 name = "openfiat-sessions"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3477,7 +3543,7 @@ dependencies = [
 [[package]]
 name = "openfiat-settlement"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-crypto",
  "openfiat-gossip",
@@ -3492,7 +3558,7 @@ dependencies = [
 [[package]]
 name = "openfiat-snapshot"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "axum",
  "bs58",
@@ -3515,12 +3581,12 @@ dependencies = [
 [[package]]
 name = "openfiat-storage"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 
 [[package]]
 name = "openfiat-taxonomy"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-crypto",
  "openfiat-network",
@@ -3533,7 +3599,7 @@ dependencies = [
 [[package]]
 name = "openfiat-trade"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "openfiat-reservations",
  "openfiat-settlement",
@@ -3545,7 +3611,7 @@ dependencies = [
 [[package]]
 name = "openfiat-tradechannel"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "chacha20poly1305",
  "openfiat-crypto",
@@ -3563,7 +3629,7 @@ dependencies = [
 [[package]]
 name = "openfiat-types"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "bs58",
  "serde",
@@ -3572,7 +3638,7 @@ dependencies = [
 [[package]]
 name = "openfiat-wallet"
 version = "0.1.0"
-source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=6b252db2c9ec36db85c4bb9623e1639ece4c4e92#6b252db2c9ec36db85c4bb9623e1639ece4c4e92"
+source = "git+https://github.com/OpenFiat-org/openfiat-core?rev=a0463bb640db0a588356f07feee7f1b9db5479bd#a0463bb640db0a588356f07feee7f1b9db5479bd"
 dependencies = [
  "bs58",
  "openfiat-crypto",
@@ -4851,7 +4917,7 @@ dependencies = [
  "anza-quinn",
  "async-trait",
  "bincode",
- "dashmap",
+ "dashmap 5.5.3",
  "futures",
  "futures-util",
  "indexmap",
@@ -5313,7 +5379,7 @@ dependencies = [
  "bincode",
  "bytes",
  "cfg-if",
- "dashmap",
+ "dashmap 5.5.3",
  "itertools 0.12.1",
  "log",
  "nix",
@@ -5866,10 +5932,10 @@ dependencies = [
  "arc-swap",
  "bytes",
  "crossbeam-channel",
- "dashmap",
+ "dashmap 5.5.3",
  "futures",
  "futures-util",
- "governor",
+ "governor 0.6.3",
  "histogram",
  "indexmap",
  "itertools 0.12.1",
@@ -6837,6 +6903,22 @@ name = "tower-service"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
+
+[[package]]
+name = "tower_governor"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44de9b94d849d3c46e06a883d72d408c2de6403367b39df2b1c9d9e7b6736fe6"
+dependencies = [
+ "axum",
+ "forwarded-header-value",
+ "governor 0.10.4",
+ "http 1.4.2",
+ "pin-project",
+ "thiserror 2.0.19",
+ "tower",
+ "tracing",
+]
 
 [[package]]
 name = "tracing"

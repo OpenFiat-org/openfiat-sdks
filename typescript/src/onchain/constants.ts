@@ -6,9 +6,9 @@ import { PublicKey } from "@solana/web3.js";
  * `openfiat-governance`. Values taken directly from each program's own
  * `declare_id!` in its `openfiat-core/programs/programs/<name>/src/lib.rs`.
  */
-export const ESCROW_PROGRAM_ID = new PublicKey("HaPpM1QYM3dKp3sX7zhEdft9hB6ncu6xfALAbkyQChQP");
-export const STAKING_PROGRAM_ID = new PublicKey("HYEXk8XQukBkZbiYB33JyVefQDxqyCpPudad3wBCyYmx");
-export const GOVERNANCE_PROGRAM_ID = new PublicKey("AVJfKUjHsizkGGUy8sdz4Xma2hVgmgvgg8GmUMs8E4eE");
+export const ESCROW_PROGRAM_ID = new PublicKey("CYdn27x69hQ8WBxBeWRGpr9c8B4dcKj8GvyBn6Sdma9s");
+export const STAKING_PROGRAM_ID = new PublicKey("3MF1nAPiECRAGs36RpQTkLb8CvMZuhcgXv1hGZoXEiid");
+export const GOVERNANCE_PROGRAM_ID = new PublicKey("2k71DBDoxM4SUFYGbyMXFiTSUynPuY2CqFUsx3FuarXF");
 
 /**
  * The OPEN token mint (Token-2022) — the protocol's own token, and the
@@ -29,7 +29,7 @@ export const GOVERNANCE_PROGRAM_ID = new PublicKey("AVJfKUjHsizkGGUy8sdz4Xma2hVg
  * the escrow builders take the mint and its token program as parameters.
  * This is the answer only where the protocol itself is the counterparty.
  */
-export const OPEN_MINT = new PublicKey("29w8TroBTYoaqrXBDcpv5L54VZRA8Kf7kU5U1cakvFdj");
+export const OPEN_MINT = new PublicKey("GwieDVo2mWeWpqAErbH9TQ94Pd2GusrfWQscJeJ4p532");
 
 /**
  * The SPL Token-2022 program.

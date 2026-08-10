@@ -28,11 +28,11 @@ use solana_pubkey::{Pubkey, pubkey};
 
 /// `openfiat-escrow`'s deployed program id (`declare_id!` in
 /// `programs/programs/escrow/src/lib.rs`).
-pub const ESCROW_PROGRAM_ID: Pubkey = pubkey!("HaPpM1QYM3dKp3sX7zhEdft9hB6ncu6xfALAbkyQChQP");
+pub const ESCROW_PROGRAM_ID: Pubkey = pubkey!("CYdn27x69hQ8WBxBeWRGpr9c8B4dcKj8GvyBn6Sdma9s");
 /// `openfiat-staking`'s deployed program id.
-pub const STAKING_PROGRAM_ID: Pubkey = pubkey!("HYEXk8XQukBkZbiYB33JyVefQDxqyCpPudad3wBCyYmx");
+pub const STAKING_PROGRAM_ID: Pubkey = pubkey!("3MF1nAPiECRAGs36RpQTkLb8CvMZuhcgXv1hGZoXEiid");
 /// `openfiat-governance`'s deployed program id.
-pub const GOVERNANCE_PROGRAM_ID: Pubkey = pubkey!("AVJfKUjHsizkGGUy8sdz4Xma2hVgmgvgg8GmUMs8E4eE");
+pub const GOVERNANCE_PROGRAM_ID: Pubkey = pubkey!("2k71DBDoxM4SUFYGbyMXFiTSUynPuY2CqFUsx3FuarXF");
 
 /// The OPEN token mint (Token-2022) — the protocol's own token, and the
 /// denomination of every stake account, rewards vault and treasury bucket
@@ -51,7 +51,7 @@ pub const GOVERNANCE_PROGRAM_ID: Pubkey = pubkey!("AVJfKUjHsizkGGUy8sdz4Xma2hVgm
 /// in whatever mint the advertisement names (wSOL, USDC), which is why the
 /// escrow builders take the mint and its token program as parameters. This
 /// is the answer only where the protocol itself is the counterparty.
-pub const OPEN_MINT: Pubkey = pubkey!("29w8TroBTYoaqrXBDcpv5L54VZRA8Kf7kU5U1cakvFdj");
+pub const OPEN_MINT: Pubkey = pubkey!("GwieDVo2mWeWpqAErbH9TQ94Pd2GusrfWQscJeJ4p532");
 
 /// The SPL Token-2022 program.
 ///
