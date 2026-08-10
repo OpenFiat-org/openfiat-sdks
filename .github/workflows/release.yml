@@ -55,6 +55,14 @@ jobs:
           fi
       - run: pnpm build
       - name: Publish
-        run: npm publish --provenance --access public
+        # Prerelease versions (any semver with a `-`, e.g. 0.2.0-rc.1) go under
+        # the `next` dist-tag, so `npm install @openfiat/sdk` keeps resolving to
+        # the newest STABLE release and never silently pulls a release
+        # candidate. Stable versions publish as `latest` as before.
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [[ "$version" == *-* ]]; then dist_tag=next; else dist_tag=latest; fi
+          echo "Publishing $version under dist-tag '$dist_tag'"
+          npm publish --provenance --access public --tag "$dist_tag"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
